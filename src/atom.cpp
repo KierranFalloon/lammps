@@ -220,6 +220,10 @@ Atom::Atom(LAMMPS *_lmp) : Pointers(_lmp), atom_style(nullptr), avec(nullptr), a
 
   area = ed = em = epsilon = curvature = q_scaled = nullptr;
 
+  // AWSEM-MD package
+
+  residue = nullptr;
+
   // end of customization section
   // --------------------------------------------------------------------
 
@@ -575,6 +579,10 @@ void Atom::peratom_create()
   add_peratom("curvature",&curvature,DOUBLE,0);
   add_peratom("q_scaled",&q_scaled,DOUBLE,0);
 
+  // AWSEM-MD package
+
+  add_peratom("residue",&residue,tagintsize,0);
+
   // end of customization section
   // --------------------------------------------------------------------
 }
@@ -658,6 +666,7 @@ void Atom::set_atomflag_defaults()
   contact_radius_flag = smd_data_9_flag = smd_stress_flag = 0;
   eff_plastic_strain_flag = eff_plastic_strain_rate_flag = 0;
   nspecial15_flag = 0;
+  residue_flag = 0;
 
   pdscale = 1.0;
 }
@@ -3107,6 +3116,10 @@ void *Atom::extract(const char *name)
   if (strcmp(name,"curvature") == 0) return (void *) curvature;
   if (strcmp(name,"q_scaled") == 0) return (void *) q_scaled;
 
+  // AWSEM-MD package
+
+  if (strcmp(name,"residue") == 0) return (void *) residue;
+
   // end of customization section
   // --------------------------------------------------------------------
 
@@ -3233,6 +3246,10 @@ int Atom::extract_datatype(const char *name)
   if (strcmp(name,"epsilon") == 0) return LAMMPS_DOUBLE;
   if (strcmp(name,"curvature") == 0) return LAMMPS_DOUBLE;
   if (strcmp(name,"q_unscaled") == 0) return LAMMPS_DOUBLE;
+
+  // AWSEM-MD package
+
+  if (strcmp(name,"residue") == 0) return LAMMPS_TAGINT;
 
   // end of customization section
   // --------------------------------------------------------------------

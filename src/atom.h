@@ -177,6 +177,10 @@ class Atom : protected Pointers {
 
   double *area, *ed, *em, *epsilon, *curvature, *q_scaled;
 
+  // AWSEM-MD package
+
+  tagint *residue;
+
   // end of customization section
   // --------------------------------------------------------------------
 
@@ -201,6 +205,7 @@ class Atom : protected Pointers {
   int rho_flag, esph_flag, cv_flag, vest_flag;
   int dpd_flag, edpd_flag, tdpd_flag;
   int mesont_flag;
+  int residue_flag;
 
   // SPIN package
 

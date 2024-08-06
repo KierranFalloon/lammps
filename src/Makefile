@@ -55,6 +55,7 @@ PACKAGE = \
 	amoeba \
 	asphere \
 	awpmd \
+	awsemmd \
 	bocs \
 	body \
 	bpm \
