@@ -29,6 +29,10 @@ $$ python generate.py box_offset box_length sequence_file [topology (strand OR r
 from __future__ import print_function
 #!/usr/bin/env python
 
+# number of ACGT base type groups
+# default value 16 protects against asymmetric base pairing over 1.5 turns on the helix
+N_BASE_TYPE_GROUPS = 16
+
 """
 Import basic modules
 """
@@ -382,7 +386,7 @@ def generate_strand(bp, sequence=None, start_pos=np.array([0, 0, 0]), \
     if perp is None or perp is False:
         v1 = np.random.random_sample(3)
         # comment in to suppress randomised base vector
-#        v1 = [1,0,0]
+        v1 = [1,0,0]
         v1 -= dir * (np.dot(dir, v1))
         v1 /= np.sqrt(sum(v1*v1))
     else:
@@ -644,7 +648,17 @@ def read_strands(filename):
             length = len(line)
             seq = [(base_to_number[x]) for x in line]
 
+            # modify default type for unique base pairing
+            group = 0
+            for s in range(len(seq)):
+                seq[s] += group*4
+                group += 1
+                # reset according to maximal number of base type groups
+                if group == N_BASE_TYPE_GROUPS:
+                    group = 0
+
             myns += 1
+
             for b in range(length):
                 basetype.append(seq[b])
                 strandnum.append(myns)
@@ -659,12 +673,23 @@ def read_strands(filename):
 
             noffset += length
 
-            # create the sequence of the second strand as made of
-            # complementary bases
-            seq2 = [5-s for s in seq]
-            seq2.reverse()
+            # create the complementary sequence of the second strand
+            
+            seq2 = seq
+            for s in range(len(seq2)):
+                if seq2[s]%4 == 1:
+                    seq2[s] += 3
+                elif seq2[s]%4 == 2:
+                    seq2[s] += 1
+                elif seq2[s]%4 == 3:
+                    seq2[s] -= 1
+                elif seq2[s]%4 == 0:
+                    seq2[s] -= 3
 
+            seq2 = seq2[::-1]
+           
             myns += 1
+
             for b in range(length):
                 basetype.append(seq2[b])
                 strandnum.append(myns)
@@ -787,7 +812,7 @@ def read_strands(filename):
     out.write('%d ellipsoids\n' % nnucl)
     out.write('%d bonds\n' % nbonds)
     out.write('\n')
-    out.write('4 atom types\n')
+    out.write('%d atom types\n' % (N_BASE_TYPE_GROUPS*4))
     out.write('1 bond types\n')
     out.write('\n')
     out.write('# System size\n')
@@ -798,10 +823,8 @@ def read_strands(filename):
     out.write('\n')
     out.write('Masses\n')
     out.write('\n')
-    out.write('1 3.1575\n')
-    out.write('2 3.1575\n')
-    out.write('3 3.1575\n')
-    out.write('4 3.1575\n')
+    for i in range(N_BASE_TYPE_GROUPS*4):
+        out.write('%d 3.1575\n' % (i+1))
 
     # for each nucleotide print a line under the headers
     # Atoms, Velocities, Ellipsoids and Bonds
