@@ -362,11 +362,11 @@ def modify_inputfile(inputfile_path: str, conversion_factors: ConversionFactors)
             lines_changed += 1
 
         elif "bond_coeff" in line or "pair_coeff" in line:
-            if ".lj" in line or ".real" in line:
+            if ".cgdna" in line: # potential files
                 if conversion_factors.inverted:
-                    line = line.replace(".real", ".lj")
+                    line = line.replace("real.cgdna", "lj.cgdna")
                 else:
-                    line = line.replace(".lj", ".real")
+                    line = line.replace("lj.cgdna", "real.cgdna")
                 lines[i] = line
                 lines_changed += 1
 
