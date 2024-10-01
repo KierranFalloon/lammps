@@ -31,7 +31,7 @@ from __future__ import print_function
 
 # number of ACGT base type groups
 # default value 16 protects against asymmetric base pairing over 1.5 turns on the helix
-N_BASE_TYPE_GROUPS = 16
+N_BASE_TYPE_GROUPS = 1
 
 """
 Import basic modules
