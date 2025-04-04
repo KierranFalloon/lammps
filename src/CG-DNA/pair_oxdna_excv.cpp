@@ -158,9 +158,11 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
   firstneigh = list->firstneigh;
 
   // loop over all local atoms, calculation of local reference frame
-  for (in = 0; in < atom->nlocal; in++) {
+  for (in = 0; in < nlocal; in++) {
 
+    if (anum == 0) continue;
     int n = alist[in];
+    if (ellipsoid[n] < 0) continue;
     double *qn,nx_temp[3],ny_temp[3],nz_temp[3]; // quaternion and Cartesian unit vectors in lab frame
 
     qn=bonus[ellipsoid[n]].quat;
