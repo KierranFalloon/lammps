@@ -51,7 +51,7 @@ typedef struct TBV {
   }
 } _TBV;
 
-struct RamaPar {
+typedef struct RamaPar {
   double w;
   double phiw, psiw;
   double phi0, psi0;
@@ -64,7 +64,7 @@ struct RamaPar {
 	return *this;
   }
 };
-struct ContactRestraintsPar {
+typedef struct ContactRestraintsPar {
   int i1, i2;
   double w, r0;
   ContactRestraintsPar() : i1(-1), i2(-1), w(0.0), r0(0.0) {}
