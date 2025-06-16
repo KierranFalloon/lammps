@@ -28,6 +28,7 @@
 #include "neigh_list.h"
 #include "neigh_request.h"
 #include "neighbor.h"
+#include "potential_file_reader.h"
 
 #include <cmath>
 #include <cstring>
@@ -41,6 +42,8 @@ PairOxdnaAwsemExcvDh::PairOxdnaAwsemExcvDh(LAMMPS *lmp) : Pair(lmp)
   writedata = 1;
   reinitflag = 1;
   offset_flag = 1;
+  trim_flag = 0;
+  file = nullptr;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -59,7 +62,6 @@ PairOxdnaAwsemExcvDh::~PairOxdnaAwsemExcvDh()
     memory->destroy(lj3);
     memory->destroy(lj4);
     memory->destroy(offset);
-    memory->destroy(kappa);
     memory->destroy(cut_coul);
     memory->destroy(cut_coulsq);
   }
@@ -89,7 +91,6 @@ void PairOxdnaAwsemExcvDh::allocate()
   memory->create(lj3, np1, np1, "pair:lj3");
   memory->create(lj4, np1, np1, "pair:lj4");
   memory->create(offset, np1, np1, "pair:offset"); // E_cut
-  memory->create(kappa, np1, np1, "pair:kappa");
   memory->create(cut_coul, np1, np1, "pair:cut_coul");
   memory->create(cut_coulsq, np1, np1, "pair:cut_coulsq");
 }
@@ -100,13 +101,9 @@ void PairOxdnaAwsemExcvDh::allocate()
 
 void PairOxdnaAwsemExcvDh::settings(int narg, char **arg)
 {
-  if (narg < 1 || narg > 2) error->all(FLERR, "Illegal pair_style command");
+  if (narg != 1) error->all(FLERR, "Illegal pair_style command");
 
-  cut_lj_global = utils::numeric(FLERR, arg[0], false, lmp);
-  if (narg == 1)
-    cut_coul_global = cut_lj_global;
-  else
-    cut_coul_global = utils::numeric(FLERR, arg[1], false, lmp);
+  cut_coul_global = utils::numeric(FLERR, arg[0], false, lmp);
 
   // reset cutoffs that have been explicitly set
 
@@ -115,7 +112,6 @@ void PairOxdnaAwsemExcvDh::settings(int narg, char **arg)
     for (i = 1; i <= atom->ntypes; i++)
       for (j = i; j <= atom->ntypes; j++)
         if (setflag[i][j]) {
-          cut_lj[i][j] = cut_lj_global;
           cut_coul[i][j] = cut_coul_global;
         }
   }
@@ -125,47 +121,70 @@ void PairOxdnaAwsemExcvDh::settings(int narg, char **arg)
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
-// pair_coeff ilo*ihi jlo*jhi oxdna2/awsem/excv/dh lj_epsilon lj_sigma dh_kappa lj_cut dh_cut
+// pair_coeff ilo*ihi jlo*jhi oxdna2/awsem/excv/dh temperature salt_conc param_file
 void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
 {
-
-  if (narg < 5 || narg > 7) error->all(FLERR, "Incorrect args for pair_coeff of pair style oxdna/awsem/excv/dh");
+  if (narg != 5) error->all(FLERR, "Incorrect args for pair_coeff of pair style oxdna/awsem/excv/dh");
   if (!allocated) allocate();
 
   int ilo, ihi, jlo, jhi;
   utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, ihi, error);
   utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error);
 
-  // Excluded volume interaction
-  // LJ Parameters
-
-  double epsilon_one = utils::numeric(FLERR, arg[2], false, lmp);
-  double sigma_one = utils::numeric(FLERR, arg[3], false, lmp);
-  double cut_lj_one = cut_lj_global;
+  // Simulation specific parameters
+  double T = utils::numeric(FLERR, arg[2], false, lmp);
+  double rhos = utils::numeric(FLERR, arg[3], false, lmp);
 
   // Coulombic interaction
-  // Debye-Huckel Parameters
-  
-  double kappa_one = utils::numeric(FLERR, arg[4], false, lmp); // inverse Debye length
-  double cut_coul_one = cut_coul_global;
+  // Debye-Huckel Parameters (eps_r = 80.0)
+  lambda = ConstantsOxdna::get_lambda_dh_one_prefactor() * sqrt(T/0.1/rhos);
+  kappa = 1.0/lambda; // inverse Debye length
 
-  if (narg >= 6) cut_coul_one = cut_lj_one = utils::numeric(FLERR, arg[5], false, lmp);
-  if (narg == 7) cut_coul_one = utils::numeric(FLERR, arg[6], false, lmp);
+  // populate 'file' with data from the potential file
+  file = new File();
+  read_file(arg[4]);
 
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
     for (int j = MAX(jlo, i); j <= jhi; j++) {
-      epsilon[i][j] = epsilon_one;
-      sigma[i][j] = sigma_one;
-      kappa[i][j] = kappa_one;
-      cut_lj[i][j] = cut_lj_one;
-      cut_coul[i][j] = cut_coul_one;
+      epsilon[i][j] = file->lj_epsilon[count];
+      sigma[i][j] = file->lj_sigma[count];
+      cut_lj[i][j] = sigma[i][j] * 1.144714243; // 1.1447 = (3/2)^(1/3)
+      cut_coul[i][j] = cut_coul_global;
       setflag[i][j] = 1;
       count++;
     }
   }
 
+  memory->destroy(file->lj_epsilon);
+  memory->destroy(file->lj_sigma);
+  delete file;
+
   if (count == 0) error->all(FLERR, "Incorrect args for pair_coeff of pair style oxdna/awsem/excv/dh");
+}
+
+void PairOxdnaAwsemExcvDh::read_file(char *filename)
+{
+  memory->create(file->lj_epsilon, N_VALUES, "pair:lj_epsilon");
+  memory->create(file->lj_sigma, N_VALUES, "pair:lj_sigma");
+
+  if (comm->me == 0) {
+    PotentialFileReader reader(lmp, filename, "oxdna/awsem/excv/dh");
+    try {
+      reader.skip_line();
+      reader.skip_line();
+
+      // read in the lj epsilon, sigma and dh qeff values
+      reader.next_dvector(file->lj_epsilon, N_VALUES);
+      reader.next_dvector(file->lj_sigma, N_VALUES);
+
+    } catch (TokenizerException &e) {
+      error->one(FLERR, e.what());
+    }
+  }
+
+  MPI_Bcast(file->lj_epsilon, N_VALUES, MPI_DOUBLE, 0, world);
+  MPI_Bcast(file->lj_sigma, N_VALUES, MPI_DOUBLE, 0, world);
 }
 
 /* ----------------------------------------------------------------------
@@ -180,14 +199,14 @@ double PairOxdnaAwsemExcvDh::init_one(int i, int j)
   cut_ljsq[i][j] = cut_lj[i][j] * cut_lj[i][j];
   cut_coulsq[i][j] = cut_coul[i][j] * cut_coul[i][j];
 
-  lj1[i][j] = 48.0 * epsilon[i][j] * pow(sigma[i][j], 12.0);
+  lj1[i][j] = 36.0 * epsilon[i][j] * pow(sigma[i][j], 9.0);
   lj2[i][j] = 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
-  lj3[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 12.0);
+  lj3[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 9.0);
   lj4[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
 
   if (offset_flag && (cut_lj[i][j] > 0.0)) {
     double ratio = sigma[i][j] / cut_lj[i][j];
-    offset[i][j] = 4.0 * epsilon[i][j] * (pow(ratio, 12.0) - pow(ratio, 6.0));
+    offset[i][j] = 4.0 * epsilon[i][j] * (pow(ratio, 9.0) - pow(ratio, 6.0));
   } else
     offset[i][j] = 0.0;
 
@@ -198,7 +217,9 @@ double PairOxdnaAwsemExcvDh::init_one(int i, int j)
   lj3[j][i] = lj3[i][j];
   lj4[j][i] = lj4[i][j];
   offset[j][i] = offset[i][j];
-  kappa[j][i] = kappa[i][j];
+
+  epsilon[j][i] = epsilon[i][j];
+  sigma[j][i] = sigma[i][j];
 
   return cut;
 }
@@ -236,7 +257,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 {
   int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid;
   double qtmp,xtmp,ytmp,ztmp,delx,dely,delz,evdwl,ecoul,fpair;
-  double r2inv_s,r2inv_b,r6inv_s,r6inv_b,forcecoul,forcelj,factor_coul,factor_lj;
+  double r2inv_s,r2inv_b,r6inv_s,r6inv_b,r3inv_s,r3inv_b,forcecoul,forcelj,factor_coul,factor_lj;
   double r,rinv,screening;
   int *ilist,*jlist,*numneigh,**firstneigh;
 
@@ -397,14 +418,16 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         if (rsq_s < cut_coulsq[itype][jtype]) {
           r = sqrt(rsq_s);
           rinv = 1.0/r;
-          screening = exp(-kappa[itype][jtype]*r);
-          forcecoul = qqrd2e * qtmp*q[j] * screening * (kappa[itype][jtype] + rinv);
+          screening = exp(-kappa*r);
+          // Note: ConstantsOxdna::qeff_dh_pf_one_prefactor === force->qqrd2e for eps_r = 80.0
+          forcecoul = ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * qtmp*q[j] * screening * (kappa + rinv);
         } else forcecoul = 0.0;
 
         // Lennard-Jones
         if (rsq_s < cut_ljsq[itype][jtype]) {
           r6inv_s = r2inv_s*r2inv_s*r2inv_s;
-          forcelj = r6inv_s * (lj1[itype][jtype]*r6inv_s - lj2[itype][jtype]);
+          r3inv_s = sqrt(r6inv_s);
+          forcelj = r6inv_s * (lj1[itype][jtype]*r3inv_s - lj2[itype][jtype]);
         } else forcelj = 0.0;
 
         // Both Debye-Huckel and Lennard-Jones excluded volume between COM and backbone site
@@ -443,7 +466,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
             ecoul = factor_coul * qqrd2e * qtmp*q[j] * rinv * screening;
           else ecoul = 0.0;
           if (rsq_s < cut_ljsq[itype][jtype]) {
-            evdwl = r6inv_s*(lj3[itype][jtype]*r6inv_s-lj4[itype][jtype]) -
+            evdwl = r6inv_s*(lj3[itype][jtype]*r3inv_s-lj4[itype][jtype]) -
               offset[itype][jtype];
             evdwl *= factor_lj;
           } else evdwl = 0.0;
@@ -461,7 +484,8 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         // Lennard-Jones
         if (rsq_b < cut_ljsq[itype][jtype]) {
           r6inv_b = r2inv_b*r2inv_b*r2inv_b;
-          forcelj = r6inv_b * (lj1[itype][jtype]*r6inv_b - lj2[itype][jtype]);
+          r3inv_b = sqrt(r6inv_b);
+          forcelj = r6inv_b * (lj1[itype][jtype]*r3inv_b - lj2[itype][jtype]);
         } else forcelj = 0.0;
         
         // Only Lennard-Jones excluded volume between COM and base site
@@ -497,7 +521,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 
         if (eflag) {
           if (rsq_b < cut_ljsq[itype][jtype]) {
-            evdwl = r6inv_b*(lj3[itype][jtype]*r6inv_b-lj4[itype][jtype]) -
+            evdwl = r6inv_b*(lj3[itype][jtype]*r3inv_b-lj4[itype][jtype]) -
               offset[itype][jtype];
             evdwl *= factor_lj;
           } else evdwl = 0.0;
@@ -522,7 +546,7 @@ void PairOxdnaAwsemExcvDh::write_data(FILE *fp)
 {
   for (int i = 1; i <= atom->ntypes; i++) {
     fprintf(fp, "  %d %d %g %g %g %g %g\n",
-      i, epsilon[i][i], sigma[i][i], kappa[i][i], cut_lj[i][i], cut_coul[i][i]);
+      i, epsilon[i][i], sigma[i][i], cut_lj[i][i], cut_coul[i][i]);
     }
 }
 
@@ -535,7 +559,7 @@ void PairOxdnaAwsemExcvDh::write_data_all(FILE *fp)
   for (int i = 1; i <= atom->ntypes; i++)
     for (int j = i; j <= atom->ntypes; j++)
       fprintf(fp, "%d %d %g %g %g %g %g\n",
-        i, j, epsilon[i][j], sigma[i][j], kappa[i][j], cut_lj[i][j], cut_coul[i][j]);
+        i, j, epsilon[i][j], sigma[i][j], cut_lj[i][j], cut_coul[i][j]);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -545,7 +569,6 @@ void *PairOxdnaAwsemExcvDh::extract(const char *str, int &dim)
   dim = 2;
   if (strcmp(str, "epsilon") == 0) return &epsilon[0][0];
   if (strcmp(str, "sigma") == 0) return &sigma[0][0];
-  if (strcmp(str, "kappa") == 0) return &kappa[0][0];
   if (strcmp(str, "cut_lj") == 0) return &cut_lj[0][0];
   if (strcmp(str, "cut_coul") == 0) return &cut_coul[0][0];
   return nullptr;

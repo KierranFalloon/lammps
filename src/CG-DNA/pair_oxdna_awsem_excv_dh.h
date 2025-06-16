@@ -39,12 +39,21 @@ class PairOxdnaAwsemExcvDh : public Pair {
   void *extract(const char *, int &) override;
 
  protected:
-  double cut_lj_global, cut_coul_global;
+  double cut_coul_global;
   double **epsilon, **sigma, **cut_lj, **cut_ljsq; // LJ parameters
-  double **kappa, **cut_coul, **cut_coulsq; // DH parameters
+  double lambda, kappa, **cut_coul, **cut_coulsq; // DH parameters
   double **lj1, **lj2, **lj3, **lj4, **offset;
 
   virtual void allocate();
+
+  // potential file reading
+  virtual void read_file(char *);
+  int N_VALUES = 20;
+  struct File { // potential file data
+   double *lj_epsilon;
+   double *lj_sigma;
+  };
+  File *file;
 };
 
 } // namespace LAMMPS_NS
