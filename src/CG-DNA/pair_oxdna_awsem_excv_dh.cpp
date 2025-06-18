@@ -39,8 +39,8 @@ using namespace LAMMPS_NS;
 
 PairOxdnaAwsemExcvDh::PairOxdnaAwsemExcvDh(LAMMPS *lmp) : Pair(lmp)
 {
+  single_enable = 0;
   writedata = 1;
-  reinitflag = 1;
   offset_flag = 1;
   trim_flag = 0;
   file = nullptr;
@@ -296,6 +296,12 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
   AtomVecEllipsoid::Bonus *bonus = avec->bonus;
   int *ellipsoid = atom->ellipsoid;
 
+  // n(x/y/z)_xtrct = extracted local unit vectors in lab frame from oxdna_excv
+  int dim;
+  nx_xtrct = (double **) force->pair->extract("nx",dim);
+  ny_xtrct = (double **) force->pair->extract("ny",dim);
+  nz_xtrct = (double **) force->pair->extract("nz",dim);
+
   // loop over neighbors of my atoms
 
   for (ii = 0; ii < inum; ii++) {
@@ -310,20 +316,15 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
     jnum = numneigh[i];
 
     if (iellipsoid >= 0) { // ellipsoid
-      double *qn, nx_temp[3], ny_temp[3], nz_temp[3]; // quaternion and Cartesian unit vectors in lab frame
-
-      qn = bonus[iellipsoid].quat;
-      MathExtra::q_to_exyz(qn, nx_temp, ny_temp, nz_temp);
-
-      ix[0] = nx_temp[0];
-      ix[1] = nx_temp[1];
-      ix[2] = nx_temp[2];
-      iy[0] = ny_temp[0];
-      iy[1] = ny_temp[1];
-      iy[2] = ny_temp[2];
-      iz[0] = nz_temp[0];
-      iz[1] = nz_temp[1];
-      iz[2] = nz_temp[2];
+      ix[0] = nx_xtrct[i][0];
+      ix[1] = nx_xtrct[i][1];
+      ix[2] = nx_xtrct[i][2];
+      iy[0] = ny_xtrct[i][0];
+      iy[1] = ny_xtrct[i][1];
+      iy[2] = ny_xtrct[i][2];
+      iz[0] = nz_xtrct[i][0];
+      iz[1] = nz_xtrct[i][1];
+      iz[2] = nz_xtrct[i][2];
 
       compute_interaction_sites(ix, iy, iz, ri_cs, ri_cb);
 
@@ -365,20 +366,15 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       }
 
       if (jellipsoid >= 0) { // atom j is an ellipsoid, so atom i is not
-        double *qn, nx_temp[3], ny_temp[3], nz_temp[3]; // quaternion and Cartesian unit vectors in lab frame
-
-        qn = bonus[jellipsoid].quat;
-        MathExtra::q_to_exyz(qn, nx_temp, ny_temp, nz_temp);
-
-        jx[0] = nx_temp[0];
-        jx[1] = nx_temp[1];
-        jx[2] = nx_temp[2];
-        jy[0] = ny_temp[0];
-        jy[1] = ny_temp[1];
-        jy[2] = ny_temp[2];
-        jz[0] = nz_temp[0];
-        jz[1] = nz_temp[1];
-        jz[2] = nz_temp[2];
+        jx[0] = nx_xtrct[j][0];
+        jx[1] = nx_xtrct[j][1];
+        jx[2] = nx_xtrct[j][2];
+        jy[0] = ny_xtrct[j][0];
+        jy[1] = ny_xtrct[j][1];
+        jy[2] = ny_xtrct[j][2];
+        jz[0] = nz_xtrct[j][0];
+        jz[1] = nz_xtrct[j][1];
+        jz[2] = nz_xtrct[j][2];
 
         compute_interaction_sites(jx, jy, jz, rj_cs, rj_cb);
         
@@ -545,7 +541,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 void PairOxdnaAwsemExcvDh::write_data(FILE *fp)
 {
   for (int i = 1; i <= atom->ntypes; i++) {
-    fprintf(fp, "  %d %d %g %g %g %g %g\n",
+    fprintf(fp, "  %d %g %g %g %g\n",
       i, epsilon[i][i], sigma[i][i], cut_lj[i][i], cut_coul[i][i]);
     }
 }
@@ -558,7 +554,7 @@ void PairOxdnaAwsemExcvDh::write_data_all(FILE *fp)
 {
   for (int i = 1; i <= atom->ntypes; i++)
     for (int j = i; j <= atom->ntypes; j++)
-      fprintf(fp, "%d %d %g %g %g %g %g\n",
+      fprintf(fp, "%d %d %g %g %g %g\n",
         i, j, epsilon[i][j], sigma[i][j], cut_lj[i][j], cut_coul[i][j]);
 }
 

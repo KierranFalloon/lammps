@@ -8,6 +8,7 @@ set(ALL_PACKAGES
   AWSEMMD
   MOLECULE
   CG-DNA
+  REPLICA
   )
 
 foreach(PKG ${ALL_PACKAGES})
