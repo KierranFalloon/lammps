@@ -459,7 +459,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 
         if (eflag) {
           if (rsq_s < cut_coulsq[itype][jtype])
-            ecoul = factor_coul * qqrd2e * qtmp*q[j] * rinv * screening;
+            ecoul = factor_coul * ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * qtmp*q[j] * rinv * screening;
           else ecoul = 0.0;
           if (rsq_s < cut_ljsq[itype][jtype]) {
             evdwl = r6inv_s*(lj3[itype][jtype]*r3inv_s-lj4[itype][jtype]) -
