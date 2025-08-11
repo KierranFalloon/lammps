@@ -62,6 +62,7 @@ PairOxdnaAwsemExcvDh::~PairOxdnaAwsemExcvDh()
     memory->destroy(lj3);
     memory->destroy(lj4);
     memory->destroy(offset);
+    memory->destroy(qeff_dh);
     memory->destroy(cut_coul);
     memory->destroy(cut_coulsq);
   }
@@ -91,6 +92,7 @@ void PairOxdnaAwsemExcvDh::allocate()
   memory->create(lj3, np1, np1, "pair:lj3");
   memory->create(lj4, np1, np1, "pair:lj4");
   memory->create(offset, np1, np1, "pair:offset"); // E_cut
+  memory->create(qeff_dh, np1, np1, "pair:qeff_dh");
   memory->create(cut_coul, np1, np1, "pair:cut_coul");
   memory->create(cut_coulsq, np1, np1, "pair:cut_coulsq");
 }
@@ -139,10 +141,15 @@ void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
   // Debye-Huckel Parameters (eps_r = 80.0)
   lambda = ConstantsOxdna::get_lambda_dh_one_prefactor() * sqrt(T/0.1/rhos);
   kappa = 1.0/lambda; // inverse Debye length
+  if (comm->me == 0) fprintf(screen, "Debye Length = %g", lambda);
 
   // populate 'file' with data from the potential file
   file = new File();
   read_file(arg[4]);
+
+  // temporary log to ensure correct values are set
+  std::string P_types[5] = {"Ca", "N", "O", "Cb", "H"};
+  std::string D_types[4] = {"A", "C", "G", "T"};
 
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
@@ -150,6 +157,11 @@ void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
       epsilon[i][j] = file->lj_epsilon[count];
       sigma[i][j] = file->lj_sigma[count];
       cut_lj[i][j] = sigma[i][j] * 1.144714243; // 1.1447 = (3/2)^(1/3)
+      qeff_dh[i][j] = file->qeff_dh[count];
+      if (comm->me == 0) {
+        fprintf(screen, "Pair coeffs for %s-%s: epsilon = %g, sigma = %g, cut_lj = %g, qeff_dh = %g\n",
+          P_types[i-ilo].c_str(), D_types[j-ihi-ilo].c_str(), epsilon[i][j], sigma[i][j], cut_lj[i][j], qeff_dh[i][j]);
+      }
       cut_coul[i][j] = cut_coul_global;
       setflag[i][j] = 1;
       count++;
@@ -158,6 +170,7 @@ void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
 
   memory->destroy(file->lj_epsilon);
   memory->destroy(file->lj_sigma);
+  memory->destroy(file->qeff_dh);
   delete file;
 
   if (count == 0) error->all(FLERR, "Incorrect args for pair_coeff of pair style oxdna/awsem/excv/dh");
@@ -167,6 +180,7 @@ void PairOxdnaAwsemExcvDh::read_file(char *filename)
 {
   memory->create(file->lj_epsilon, N_VALUES, "pair:lj_epsilon");
   memory->create(file->lj_sigma, N_VALUES, "pair:lj_sigma");
+  memory->create(file->qeff_dh, N_VALUES, "pair:dh_qeff");
 
   if (comm->me == 0) {
     PotentialFileReader reader(lmp, filename, "oxdna/awsem/excv/dh");
@@ -177,6 +191,7 @@ void PairOxdnaAwsemExcvDh::read_file(char *filename)
       // read in the lj epsilon, sigma and dh qeff values
       reader.next_dvector(file->lj_epsilon, N_VALUES);
       reader.next_dvector(file->lj_sigma, N_VALUES);
+      reader.next_dvector(file->qeff_dh, N_VALUES);
 
     } catch (TokenizerException &e) {
       error->one(FLERR, e.what());
@@ -185,6 +200,7 @@ void PairOxdnaAwsemExcvDh::read_file(char *filename)
 
   MPI_Bcast(file->lj_epsilon, N_VALUES, MPI_DOUBLE, 0, world);
   MPI_Bcast(file->lj_sigma, N_VALUES, MPI_DOUBLE, 0, world);
+  MPI_Bcast(file->qeff_dh, N_VALUES, MPI_DOUBLE, 0, world);
 }
 
 /* ----------------------------------------------------------------------
@@ -220,6 +236,8 @@ double PairOxdnaAwsemExcvDh::init_one(int i, int j)
 
   epsilon[j][i] = epsilon[i][j];
   sigma[j][i] = sigma[i][j];
+
+  qeff_dh[j][i] = qeff_dh[i][j];
 
   return cut;
 }
@@ -266,7 +284,8 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 
   double **x = atom->x;
   double **f = atom->f;
-  double *q = atom->q;
+  double *q = atom->q; // Note: atom->q holds charge based on amino acid (+1, -1 or 0)
+  double q_prod; // protein-DNA charge product
   int *type = atom->type;
   double **torque = atom->torque;
   int nlocal = atom->nlocal;
@@ -366,6 +385,8 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       }
 
       if (jellipsoid >= 0) { // atom j is an ellipsoid, so atom i is not
+        q_prod = qtmp * -qeff_dh[itype][jtype];
+
         jx[0] = nx_xtrct[j][0];
         jx[1] = nx_xtrct[j][1];
         jx[2] = nx_xtrct[j][2];
@@ -389,6 +410,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         delr_b[1] = rtmp_b[1] - (x[j][1] + rj_cb[1]);
         delr_b[2] = rtmp_b[2] - (x[j][2] + rj_cb[2]);
       } else { // j is not an ellipsoid, so i is
+        q_prod = q[j] * -qeff_dh[itype][jtype];
 
         // as atom i is an ellipsoid, rtmp_s and rtmp_b are the DNA backbone and base site coordinates
         // DNA backbone site - protein atom COM
@@ -411,12 +433,12 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         r2inv_s = 1.0/rsq_s;
         
         // Debye-Huckel
-        if (rsq_s < cut_coulsq[itype][jtype]) {
+        if (q_prod != 0.0 && rsq_s < cut_coulsq[itype][jtype]) {
           r = sqrt(rsq_s);
           rinv = 1.0/r;
           screening = exp(-kappa*r);
           // Note: ConstantsOxdna::qeff_dh_pf_one_prefactor === force->qqrd2e for eps_r = 80.0
-          forcecoul = ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * qtmp*q[j] * screening * (kappa + rinv);
+          forcecoul = ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * q_prod * screening * (kappa + rinv);
         } else forcecoul = 0.0;
 
         // Lennard-Jones
@@ -458,8 +480,8 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         }
 
         if (eflag) {
-          if (rsq_s < cut_coulsq[itype][jtype])
-            ecoul = factor_coul * ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * qtmp*q[j] * rinv * screening;
+          if (q_prod != 0.0 && rsq_s < cut_coulsq[itype][jtype])
+            ecoul = factor_coul * ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * q_prod * rinv * screening;
           else ecoul = 0.0;
           if (rsq_s < cut_ljsq[itype][jtype]) {
             evdwl = r6inv_s*(lj3[itype][jtype]*r3inv_s-lj4[itype][jtype]) -
