@@ -952,7 +952,7 @@ void PairOxdnaStk::coeff(int narg, char **arg)
       if (jmod4 == 0) jmod4 = 4;
 
       epsilon_st[i][j] = epsilon_st_one;
-      if (seqdepflag) epsilon_st[i][j] *= eta_st[imod4-1][jmod4-1];
+      // if (seqdepflag) epsilon_st[i][j] *= eta_st[imod4-1][jmod4-1];
       a_st[i][j] = a_st_one;
       cut_st_0[i][j] = cut_st_0_one;
       cut_st_c[i][j] = cut_st_c_one;
@@ -963,7 +963,7 @@ void PairOxdnaStk::coeff(int narg, char **arg)
       b_st_lo[i][j] = b_st_lo_one;
       b_st_hi[i][j] = b_st_hi_one;
       shift_st[i][j] = shift_st_one;
-      if (seqdepflag) shift_st[i][j] *= eta_st[imod4-1][jmod4-1];
+      // if (seqdepflag) shift_st[i][j] *= eta_st[imod4-1][jmod4-1];
 
       a_st4[i][j] = a_st4_one;
       theta_st4_0[i][j] = theta_st4_0_one;
@@ -1047,7 +1047,8 @@ double PairOxdnaStk::init_one(int i, int j)
   if (jmod4 == 0) jmod4 = 4;
 
   if (seqdepflag) {
-    epsilon_st[j][i] = epsilon_st[i][j]  / eta_st[imod4-1][jmod4-1] * eta_st[jmod4-1][imod4-1];
+    epsilon_st[i][j] *= eta_st[imod4-1][jmod4-1];
+    epsilon_st[j][i] = epsilon_st[i][j] / eta_st[imod4-1][jmod4-1] * eta_st[jmod4-1][imod4-1];
   }
   else {
     epsilon_st[j][i] = epsilon_st[i][j];
@@ -1062,6 +1063,7 @@ double PairOxdnaStk::init_one(int i, int j)
   cut_st_lc[j][i] = cut_st_lc[i][j];
   cut_st_hc[j][i] = cut_st_hc[i][j];
   if (seqdepflag) {
+    shift_st[i][j] *= eta_st[imod4-1][jmod4-1];
     shift_st[j][i] = shift_st[i][j] / eta_st[imod4-1][jmod4-1] * eta_st[jmod4-1][imod4-1];
   }
   else {

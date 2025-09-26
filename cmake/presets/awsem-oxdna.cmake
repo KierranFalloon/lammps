@@ -9,6 +9,7 @@ set(ALL_PACKAGES
   MOLECULE
   CG-DNA
   REPLICA
+  FEP
   )
 
 foreach(PKG ${ALL_PACKAGES})

@@ -62,6 +62,7 @@ PairOxdnaAwsemExcvDh::~PairOxdnaAwsemExcvDh()
     memory->destroy(lj3);
     memory->destroy(lj4);
     memory->destroy(offset);
+    memory->destroy(kappa);
     memory->destroy(qeff_dh);
     memory->destroy(cut_coul);
     memory->destroy(cut_coulsq);
@@ -92,6 +93,7 @@ void PairOxdnaAwsemExcvDh::allocate()
   memory->create(lj3, np1, np1, "pair:lj3");
   memory->create(lj4, np1, np1, "pair:lj4");
   memory->create(offset, np1, np1, "pair:offset"); // E_cut
+  memory->create(kappa, np1, np1, "pair:kappa");
   memory->create(qeff_dh, np1, np1, "pair:qeff_dh");
   memory->create(cut_coul, np1, np1, "pair:cut_coul");
   memory->create(cut_coulsq, np1, np1, "pair:cut_coulsq");
@@ -140,8 +142,8 @@ void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
   // Coulombic interaction
   // Debye-Huckel Parameters (eps_r = 80.0)
   lambda = ConstantsOxdna::get_lambda_dh_one_prefactor() * sqrt(T/0.1/rhos);
-  kappa = 1.0/lambda; // inverse Debye length
-  if (comm->me == 0) fprintf(screen, "Debye Length = %g", lambda);
+  kappa_one = 1.0/lambda; // inverse Debye length
+  if (comm->me == 0) fprintf(screen, "Debye Length = %g\n", lambda);
 
   // populate 'file' with data from the potential file
   file = new File();
@@ -162,6 +164,7 @@ void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
         fprintf(screen, "Pair coeffs for %s-%s: epsilon = %g, sigma = %g, cut_lj = %g, qeff_dh = %g\n",
           P_types[i-ilo].c_str(), D_types[j-ihi-ilo].c_str(), epsilon[i][j], sigma[i][j], cut_lj[i][j], qeff_dh[i][j]);
       }
+      kappa[i][j] = kappa_one;
       cut_coul[i][j] = cut_coul_global;
       setflag[i][j] = 1;
       count++;
@@ -237,6 +240,7 @@ double PairOxdnaAwsemExcvDh::init_one(int i, int j)
   epsilon[j][i] = epsilon[i][j];
   sigma[j][i] = sigma[i][j];
 
+  kappa[j][i] = kappa[i][j];
   qeff_dh[j][i] = qeff_dh[i][j];
 
   return cut;
@@ -436,9 +440,9 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         if (q_prod != 0.0 && rsq_s < cut_coulsq[itype][jtype]) {
           r = sqrt(rsq_s);
           rinv = 1.0/r;
-          screening = exp(-kappa*r);
+          screening = exp(-kappa[itype][jtype]*r);
           // Note: ConstantsOxdna::qeff_dh_pf_one_prefactor === force->qqrd2e for eps_r = 80.0
-          forcecoul = ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * q_prod * screening * (kappa + rinv);
+          forcecoul = ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * q_prod * screening * (kappa[itype][jtype] + rinv);
         } else forcecoul = 0.0;
 
         // Lennard-Jones
@@ -585,9 +589,6 @@ void PairOxdnaAwsemExcvDh::write_data_all(FILE *fp)
 void *PairOxdnaAwsemExcvDh::extract(const char *str, int &dim)
 {
   dim = 2;
-  if (strcmp(str, "epsilon") == 0) return &epsilon[0][0];
-  if (strcmp(str, "sigma") == 0) return &sigma[0][0];
-  if (strcmp(str, "cut_lj") == 0) return &cut_lj[0][0];
-  if (strcmp(str, "cut_coul") == 0) return &cut_coul[0][0];
+  if (strcmp(str, "kappa") == 0) return (void *) kappa;
   return nullptr;
 }
