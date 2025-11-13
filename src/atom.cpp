@@ -226,6 +226,10 @@ Atom::Atom(LAMMPS *_lmp) : Pointers(_lmp), atom_style(nullptr), avec(nullptr), a
   apip_lambda_required = nullptr;
   apip_f_const_lambda = apip_f_dyn_lambda = nullptr;
 
+  // AWSEM-MD package
+
+  residue = nullptr;
+
   // end of customization section
   // --------------------------------------------------------------------
 
@@ -593,6 +597,10 @@ void Atom::peratom_create()
   add_peratom("apip_f_const_lambda",&apip_f_const_lambda,DOUBLE,3,1);
   add_peratom("apip_f_dyn_lambda",&apip_f_dyn_lambda,DOUBLE,3,1);
 
+  // AWSEM-MD package
+
+  add_peratom("residue",&residue,tagintsize,0);
+
   // end of customization section
   // --------------------------------------------------------------------
 }
@@ -677,6 +685,7 @@ void Atom::set_atomflag_defaults()
   eff_plastic_strain_flag = eff_plastic_strain_rate_flag = 0;
   nspecial15_flag = 0;
   apip_lambda_flag = apip_e_fast_flag = apip_e_precise_flag = apip_lambda_input_flag = apip_lambda_input_ta_flag = apip_lambda_required_flag = apip_f_const_lambda_flag = apip_f_dyn_lambda_flag = apip_lambda_const_flag = 0;
+  residue_flag = 0;
 
   pdscale = 1.0;
 }
@@ -3211,6 +3220,10 @@ void *Atom::extract(const char *name)
   if (strcmp(name,"apip_f_dyn_lambda") == 0) return (void *) apip_f_dyn_lambda;
   if (strcmp(name,"apip_lambda_const") == 0) return (void *) apip_lambda_const;
 
+  // AWSEM-MD package
+
+  if (strcmp(name,"residue") == 0) return (void *) residue;
+
   // end of customization section
   // --------------------------------------------------------------------
 
@@ -3380,6 +3393,11 @@ int Atom::extract_datatype(const char *name)
   if (strcmp(name,"apip_lambda_const") == 0) return LAMMPS_DOUBLE;
   if (strcmp(name,"apip_f_const_lambda") == 0) return LAMMPS_DOUBLE_2D;
   if (strcmp(name,"apip_f_dyn_lambda") == 0) return LAMMPS_DOUBLE_2D;
+
+  // AWSEM-MD package
+
+  if (strcmp(name,"residue") == 0) return LAMMPS_TAGINT;
+
   // end of customization section
   // --------------------------------------------------------------------
 

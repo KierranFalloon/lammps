@@ -184,6 +184,10 @@ class Atom : protected Pointers {
   double *apip_lambda, *apip_lambda_input, *apip_lambda_input_ta, *apip_e_fast, *apip_e_precise, **apip_f_const_lambda, **apip_f_dyn_lambda, *apip_lambda_const;
   int *apip_lambda_required;
 
+  // AWSEM-MD package
+
+  tagint *residue;
+
   // end of customization section
   // --------------------------------------------------------------------
 
@@ -208,6 +212,7 @@ class Atom : protected Pointers {
   int rho_flag, esph_flag, cv_flag, vest_flag;
   int dpd_flag, edpd_flag, tdpd_flag;
   int mesont_flag;
+  int residue_flag;
 
   // SPIN package
 

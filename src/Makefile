@@ -56,6 +56,7 @@ PACKAGE = \
 	apip \
 	asphere \
 	awpmd \
+	awsemmd \
 	bocs \
 	body \
 	bpm \
