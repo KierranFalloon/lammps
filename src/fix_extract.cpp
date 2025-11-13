@@ -56,6 +56,13 @@ FixExtract::FixExtract(LAMMPS *lmp, int narg, char **arg) :
   fieldname = utils::strdup(arg[5]);
 }
 
+FixExtract::~FixExtract()
+{
+  delete[] var_extract;
+  delete[] fixname;
+  delete[] fieldname;
+}
+
 /* ---------------------------------------------------------------------- */
 
 int FixExtract::setmask()

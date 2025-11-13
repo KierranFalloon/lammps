@@ -27,6 +27,7 @@ namespace LAMMPS_NS {
 class FixExtract : public Fix {
  public:
   FixExtract(class LAMMPS *, int, char **);
+  ~FixExtract() override;
   int setmask() override;
   void init() override;
   void setup_pre_force(int) override;

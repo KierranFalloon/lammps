@@ -1263,6 +1263,14 @@ FixBackbone::~FixBackbone()
     delete [] mcso_se;
     delete [] z_res;
 
+    if (water_flag) {
+      delete well;
+    }
+    
+    if (helix_flag) {
+      delete helix_well;
+    }
+
     if (p_ap_flag) {
       delete p_ap;
     }
