@@ -56,6 +56,8 @@ class PairOxdnaAwsemExcvDh : public Pair {
    double *qeff_dh;
   };
   File *file;
+
+  class Fix *fix_lrf;    // ptr to oxdna/lrf fix
 };
 
 } // namespace LAMMPS_NS
