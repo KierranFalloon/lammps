@@ -138,6 +138,7 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
   double **x = atom->x;
   double **f = atom->f;
   double **torque = atom->torque;
+  tagint *tag = atom->tag;
   int *type = atom->type;
 
   int nlocal = atom->nlocal;
@@ -146,9 +147,8 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
 
   auto *avec = dynamic_cast<AtomVecEllipsoid *>(atom->style_match("ellipsoid"));
   AtomVecEllipsoid::Bonus *bonus = avec->bonus;
-  int *ellipsoid = atom->ellipsoid;
 
-  int a,b,in,ia,ib,anum,bnum,atype,btype;
+  int a,b,in,ia,ib,anum,bnum,atype,btype,alocal,blocal;
 
   evdwl = 0.0;
   ev_init(eflag,vflag);
@@ -158,11 +158,8 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
-  // n(x/y/z)_xtrct = extracted local unit vectors in lab frame from fix oxdna/lrf
-  int dim;
-  nx_xtrct = (double **) fix_lrf->extract("nx",dim);
-  ny_xtrct = (double **) fix_lrf->extract("ny",dim);
-  nz_xtrct = (double **) fix_lrf->extract("nz",dim);
+  // nxyz_xtrct = extracted local unit vectors in lab frame from fix oxdna/lrf
+  nxyz_xtrct = fix_lrf->array_atom;
 
   // loop over pair interaction neighbors of my atoms
 
@@ -170,16 +167,17 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
 
     a = alist[ia];
     atype = type[a];
+    alocal = atom->map(tag[a]);
 
-    ax[0] = nx_xtrct[a][0];
-    ax[1] = nx_xtrct[a][1];
-    ax[2] = nx_xtrct[a][2];
-    ay[0] = ny_xtrct[a][0];
-    ay[1] = ny_xtrct[a][1];
-    ay[2] = ny_xtrct[a][2];
-    az[0] = nz_xtrct[a][0];
-    az[1] = nz_xtrct[a][1];
-    az[2] = nz_xtrct[a][2];
+    ax[0] = nxyz_xtrct[alocal][0];
+    ax[1] = nxyz_xtrct[alocal][1];
+    ax[2] = nxyz_xtrct[alocal][2];
+    ay[0] = nxyz_xtrct[alocal][3];
+    ay[1] = nxyz_xtrct[alocal][4];
+    ay[2] = nxyz_xtrct[alocal][5];
+    az[0] = nxyz_xtrct[alocal][6];
+    az[1] = nxyz_xtrct[alocal][7];
+    az[2] = nxyz_xtrct[alocal][8];
 
     // vector COM - backbone and base site a
     compute_interaction_sites(ax,ay,az,ra_cs,ra_cb);
@@ -202,16 +200,17 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
       b &= NEIGHMASK;
 
       btype = type[b];
+      blocal = atom->map(tag[b]);
 
-      bx[0] = nx_xtrct[b][0];
-      bx[1] = nx_xtrct[b][1];
-      bx[2] = nx_xtrct[b][2];
-      by[0] = ny_xtrct[b][0];
-      by[1] = ny_xtrct[b][1];
-      by[2] = ny_xtrct[b][2];
-      bz[0] = nz_xtrct[b][0];
-      bz[1] = nz_xtrct[b][1];
-      bz[2] = nz_xtrct[b][2];
+      bx[0] = nxyz_xtrct[blocal][0];
+      bx[1] = nxyz_xtrct[blocal][1];
+      bx[2] = nxyz_xtrct[blocal][2];
+      by[0] = nxyz_xtrct[blocal][3];
+      by[1] = nxyz_xtrct[blocal][4];
+      by[2] = nxyz_xtrct[blocal][5];
+      bz[0] = nxyz_xtrct[blocal][6];
+      bz[1] = nxyz_xtrct[blocal][7];
+      bz[2] = nxyz_xtrct[blocal][8];
 
       // vector COM - backbone and base site b
       compute_interaction_sites(bx,by,bz,rb_cs,rb_cb);
