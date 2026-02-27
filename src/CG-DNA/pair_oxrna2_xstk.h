@@ -61,7 +61,7 @@ class PairOxrna2Xstk : public Pair {
 
   virtual void allocate();
 
-  class Fix *fix_lrf;    // ptr to oxdna/lrf fix
+  class FixOxdnaLRF *fix_lrf;    // ptr to oxdna/lrf fix
 };
 
 }    // namespace LAMMPS_NS
