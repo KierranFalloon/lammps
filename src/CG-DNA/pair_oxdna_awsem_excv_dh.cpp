@@ -22,7 +22,7 @@
 #include "comm.h"
 #include "constants_oxdna.h"
 #include "error.h"
-#include "fix.h"
+#include "fix_oxdna_lrf.h"
 #include "force.h"
 #include "math_extra.h"
 #include "memory.h"
@@ -272,7 +272,7 @@ void PairOxdnaAwsemExcvDh::init_style()
   fix_lrf = nullptr;
   auto fixes = modify->get_fix_by_style("^oxdna/lrf");
   if (fixes.size() == 0) error->all(FLERR, "Fix oxdna/lrf not found. Ensure pair oxdna/excv is present");
-  else fix_lrf = fixes[0];
+  else fix_lrf = dynamic_cast<FixOxdnaLRF *>(fixes[0]);
 
   neighbor->add_request(this, NeighConst::REQ_DEFAULT);
 }
@@ -284,7 +284,7 @@ void PairOxdnaAwsemExcvDh::init_style()
 
 void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 {
-  int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid;
+  int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid,ilocal,jlocal;
   double qtmp,xtmp,ytmp,ztmp,delx,dely,delz,evdwl,ecoul,fpair;
   double r2inv_s,r2inv_b,r6inv_s,r6inv_b,r3inv_s,r3inv_b,forcecoul,forcelj,factor_coul,factor_lj;
   double r,rinv,screening;
@@ -299,7 +299,10 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
   double q_prod; // protein-DNA charge product
   int *type = atom->type;
   double **torque = atom->torque;
+  tagint *tag = atom->tag;
   int nlocal = atom->nlocal;
+
+
   double *special_coul = force->special_coul;
   double *special_lj = force->special_lj;
   int newton_pair = force->newton_pair;
@@ -326,11 +329,8 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
   AtomVecEllipsoid::Bonus *bonus = avec->bonus;
   int *ellipsoid = atom->ellipsoid;
 
-  // n(x/y/z)_xtrct = extracted local unit vectors in lab frame from fix oxdna/lrf
-  int dim;
-  nx_xtrct = (double **) fix_lrf->extract("nx",dim);
-  ny_xtrct = (double **) fix_lrf->extract("ny",dim);
-  nz_xtrct = (double **) fix_lrf->extract("nz",dim);
+  // nxyz_xtrct = extracted local unit vectors in lab frame from fix oxdna/lrf
+  nxyz_xtrct = fix_lrf->array_atom;
 
   // loop over neighbors of my atoms
 
@@ -342,19 +342,20 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
     ztmp = x[i][2];
     itype = type[i];
     iellipsoid = ellipsoid[i]; // < 0 if not an ellipsoid
+    ilocal = atom->map(tag[i]);
     jlist = firstneigh[i];
     jnum = numneigh[i];
 
     if (iellipsoid >= 0) { // ellipsoid
-      ix[0] = nx_xtrct[i][0];
-      ix[1] = nx_xtrct[i][1];
-      ix[2] = nx_xtrct[i][2];
-      iy[0] = ny_xtrct[i][0];
-      iy[1] = ny_xtrct[i][1];
-      iy[2] = ny_xtrct[i][2];
-      iz[0] = nz_xtrct[i][0];
-      iz[1] = nz_xtrct[i][1];
-      iz[2] = nz_xtrct[i][2];
+      ix[0] = nxyz_xtrct[ilocal][0];
+      ix[1] = nxyz_xtrct[ilocal][1];
+      ix[2] = nxyz_xtrct[ilocal][2];
+      iy[0] = nxyz_xtrct[ilocal][3];
+      iy[1] = nxyz_xtrct[ilocal][4];
+      iy[2] = nxyz_xtrct[ilocal][5];
+      iz[0] = nxyz_xtrct[ilocal][6];
+      iz[1] = nxyz_xtrct[ilocal][7];
+      iz[2] = nxyz_xtrct[ilocal][8];
 
       compute_interaction_sites(ix, iy, iz, ri_cs, ri_cb);
 
@@ -389,6 +390,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       delz = ztmp - x[j][2];
       jtype = type[j];
       jellipsoid = ellipsoid[j]; // < 0 if not an ellipsoid
+      jlocal = atom->map(tag[j]);
 
       // sanity check - should always be ellipsoid <-> non-ellipsoid interaction
       if ((iellipsoid >= 0 && jellipsoid >= 0) || (iellipsoid < 0 && jellipsoid < 0)) {
@@ -398,15 +400,15 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       if (jellipsoid >= 0) { // atom j is an ellipsoid, so atom i is not
         q_prod = qtmp * -qeff_dh[itype][jtype];
 
-        jx[0] = nx_xtrct[j][0];
-        jx[1] = nx_xtrct[j][1];
-        jx[2] = nx_xtrct[j][2];
-        jy[0] = ny_xtrct[j][0];
-        jy[1] = ny_xtrct[j][1];
-        jy[2] = ny_xtrct[j][2];
-        jz[0] = nz_xtrct[j][0];
-        jz[1] = nz_xtrct[j][1];
-        jz[2] = nz_xtrct[j][2];
+        jx[0] = nxyz_xtrct[jlocal][0];
+        jx[1] = nxyz_xtrct[jlocal][1];
+        jx[2] = nxyz_xtrct[jlocal][2];
+        jy[0] = nxyz_xtrct[jlocal][3];
+        jy[1] = nxyz_xtrct[jlocal][4];
+        jy[2] = nxyz_xtrct[jlocal][5];
+        jz[0] = nxyz_xtrct[jlocal][6];
+        jz[1] = nxyz_xtrct[jlocal][7];
+        jz[2] = nxyz_xtrct[jlocal][8];
 
         compute_interaction_sites(jx, jy, jz, rj_cs, rj_cb);
         

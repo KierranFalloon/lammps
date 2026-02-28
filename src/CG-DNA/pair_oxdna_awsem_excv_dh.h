@@ -40,7 +40,7 @@ class PairOxdnaAwsemExcvDh : public Pair {
 
  protected:
   double cut_coul_global;
-  double **nx_xtrct, **ny_xtrct, **nz_xtrct;    // per-atom arrays for local unit vectors
+  double **nxyz_xtrct;    // per-atom arrays for local unit vectors
   double **epsilon, **sigma, **cut_lj, **cut_ljsq; // LJ parameters
   double lambda, kappa_one, **kappa, **qeff_dh, **cut_coul, **cut_coulsq; // DH parameters
   double **lj1, **lj2, **lj3, **lj4, **offset;
@@ -57,7 +57,7 @@ class PairOxdnaAwsemExcvDh : public Pair {
   };
   File *file;
 
-  class Fix *fix_lrf;    // ptr to oxdna/lrf fix
+  class FixOxdnaLRF *fix_lrf;    // ptr to oxdna/lrf fix
 };
 
 } // namespace LAMMPS_NS
