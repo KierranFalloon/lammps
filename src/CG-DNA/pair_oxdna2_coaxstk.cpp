@@ -132,7 +132,6 @@ void PairOxdna2Coaxstk::compute(int eflag, int vflag)
   double **x = atom->x;
   double **f = atom->f;
   double **torque = atom->torque;
-  tagint *tag = atom->tag;
   int *type = atom->type;
 
   int nlocal = atom->nlocal;
@@ -140,7 +139,7 @@ void PairOxdna2Coaxstk::compute(int eflag, int vflag)
   int *alist,*blist,*numneigh,**firstneigh;
   double *special_lj = force->special_lj;
 
-  int a,b,ia,ib,anum,bnum,atype,btype,alocal,blocal;
+  int a,b,ia,ib,anum,bnum,atype,btype;
 
   double f2,f4f6t1,f4t4,f4t5,f4t6;
   double df2,df4f6t1,df4t4,df4t5,df4t6,rsint;
@@ -162,11 +161,10 @@ void PairOxdna2Coaxstk::compute(int eflag, int vflag)
 
     a = alist[ia];
     atype = type[a];
-    alocal = atom->map(tag[a]);
 
-    ax[0] = nxyz_xtrct[alocal][0];
-    ax[1] = nxyz_xtrct[alocal][1];
-    ax[2] = nxyz_xtrct[alocal][2];
+    ax[0] = nxyz_xtrct[a][0];
+    ax[1] = nxyz_xtrct[a][1];
+    ax[2] = nxyz_xtrct[a][2];
 
     // vector COM a - stacking site a
     ra_cst[0] = d_cst*ax[0];
@@ -188,11 +186,10 @@ void PairOxdna2Coaxstk::compute(int eflag, int vflag)
       b &= NEIGHMASK;
 
       btype = type[b];
-      blocal = atom->map(tag[b]);
 
-      bx[0] = nxyz_xtrct[blocal][0];
-      bx[1] = nxyz_xtrct[blocal][1];
-      bx[2] = nxyz_xtrct[blocal][2];
+      bx[0] = nxyz_xtrct[b][0];
+      bx[1] = nxyz_xtrct[b][1];
+      bx[2] = nxyz_xtrct[b][2];
 
       // vector COM b - stacking site b
       rb_cst[0] = d_cst*bx[0];
@@ -244,12 +241,12 @@ void PairOxdna2Coaxstk::compute(int eflag, int vflag)
       // early rejection criterium
       if (f4f6t1 != 0.0) {
 
-        az[0] = nxyz_xtrct[alocal][6];
-        az[1] = nxyz_xtrct[alocal][7];
-        az[2] = nxyz_xtrct[alocal][8];
-        bz[0] = nxyz_xtrct[blocal][6];
-        bz[1] = nxyz_xtrct[blocal][7];
-        bz[2] = nxyz_xtrct[blocal][8];
+        az[0] = nxyz_xtrct[a][6];
+        az[1] = nxyz_xtrct[a][7];
+        az[2] = nxyz_xtrct[a][8];
+        bz[0] = nxyz_xtrct[b][6];
+        bz[1] = nxyz_xtrct[b][7];
+        bz[2] = nxyz_xtrct[b][8];
 
         cost4 = MathExtra::dot3(az,bz);
         if (cost4 >  1.0) cost4 =  1.0;

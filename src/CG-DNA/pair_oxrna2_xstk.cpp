@@ -133,7 +133,6 @@ void PairOxrna2Xstk::compute(int eflag, int vflag)
   double **x = atom->x;
   double **f = atom->f;
   double **torque = atom->torque;
-  tagint *tag = atom->tag;
   int *type = atom->type;
 
   int nlocal = atom->nlocal;
@@ -141,7 +140,7 @@ void PairOxrna2Xstk::compute(int eflag, int vflag)
   int *alist,*blist,*numneigh,**firstneigh;
   double *special_lj = force->special_lj;
 
-  int a,b,ia,ib,anum,bnum,atype,btype,alocal,blocal;
+  int a,b,ia,ib,anum,bnum,atype,btype;
 
   double f2,f4t1,f4t2,f4t3,f4t7,f4t8;
   double df2,df4t1,df4t2,df4t3,df4t7,df4t8,rsint;
@@ -163,11 +162,10 @@ void PairOxrna2Xstk::compute(int eflag, int vflag)
 
     a = alist[ia];
     atype = type[a];
-    alocal = atom->map(tag[a]);
 
-    ax[0] = nxyz_xtrct[alocal][0];
-    ax[1] = nxyz_xtrct[alocal][1];
-    ax[2] = nxyz_xtrct[alocal][2];
+    ax[0] = nxyz_xtrct[a][0];
+    ax[1] = nxyz_xtrct[a][1];
+    ax[2] = nxyz_xtrct[a][2];
 
     ra_chb[0] = d_chb*ax[0];
     ra_chb[1] = d_chb*ax[1];
@@ -183,11 +181,10 @@ void PairOxrna2Xstk::compute(int eflag, int vflag)
       b &= NEIGHMASK;
 
       btype = type[b];
-      blocal = atom->map(tag[b]);
 
-      bx[0] = nxyz_xtrct[blocal][0];
-      bx[1] = nxyz_xtrct[blocal][1];
-      bx[2] = nxyz_xtrct[blocal][2];
+      bx[0] = nxyz_xtrct[b][0];
+      bx[1] = nxyz_xtrct[b][1];
+      bx[2] = nxyz_xtrct[b][2];
 
       rb_chb[0] = d_chb*bx[0];
       rb_chb[1] = d_chb*bx[1];
@@ -246,9 +243,9 @@ void PairOxrna2Xstk::compute(int eflag, int vflag)
       // early rejection criterium
       if (f4t3 != 0.0) {
 
-      az[0] = nxyz_xtrct[alocal][6];
-      az[1] = nxyz_xtrct[alocal][7];
-      az[2] = nxyz_xtrct[alocal][8];
+      az[0] = nxyz_xtrct[a][6];
+      az[1] = nxyz_xtrct[a][7];
+      az[2] = nxyz_xtrct[a][8];
 
       cost7 = -1.0*MathExtra::dot3(az,delr_hb_norm);
       if (cost7 >  1.0) cost7 =  1.0;
@@ -264,9 +261,9 @@ void PairOxrna2Xstk::compute(int eflag, int vflag)
       // early rejection criterium
       if (f4t7 != 0.0) {
 
-      bz[0] = nxyz_xtrct[blocal][6];
-      bz[1] = nxyz_xtrct[blocal][7];
-      bz[2] = nxyz_xtrct[blocal][8];
+      bz[0] = nxyz_xtrct[b][6];
+      bz[1] = nxyz_xtrct[b][7];
+      bz[2] = nxyz_xtrct[b][8];
 
       cost8 = MathExtra::dot3(bz,delr_hb_norm);
       if (cost8 >  1.0) cost8 =  1.0;

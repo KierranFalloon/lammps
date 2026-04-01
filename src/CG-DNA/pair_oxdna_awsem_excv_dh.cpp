@@ -284,7 +284,7 @@ void PairOxdnaAwsemExcvDh::init_style()
 
 void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 {
-  int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid,ilocal,jlocal;
+  int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid;
   double qtmp,xtmp,ytmp,ztmp,delx,dely,delz,evdwl,ecoul,fpair;
   double r2inv_s,r2inv_b,r6inv_s,r6inv_b,r3inv_s,r3inv_b,forcecoul,forcelj,factor_coul,factor_lj;
   double r,rinv,screening;
@@ -299,9 +299,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
   double q_prod; // protein-DNA charge product
   int *type = atom->type;
   double **torque = atom->torque;
-  tagint *tag = atom->tag;
   int nlocal = atom->nlocal;
-
 
   double *special_coul = force->special_coul;
   double *special_lj = force->special_lj;
@@ -342,20 +340,19 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
     ztmp = x[i][2];
     itype = type[i];
     iellipsoid = ellipsoid[i]; // < 0 if not an ellipsoid
-    ilocal = atom->map(tag[i]);
     jlist = firstneigh[i];
     jnum = numneigh[i];
 
     if (iellipsoid >= 0) { // ellipsoid
-      ix[0] = nxyz_xtrct[ilocal][0];
-      ix[1] = nxyz_xtrct[ilocal][1];
-      ix[2] = nxyz_xtrct[ilocal][2];
-      iy[0] = nxyz_xtrct[ilocal][3];
-      iy[1] = nxyz_xtrct[ilocal][4];
-      iy[2] = nxyz_xtrct[ilocal][5];
-      iz[0] = nxyz_xtrct[ilocal][6];
-      iz[1] = nxyz_xtrct[ilocal][7];
-      iz[2] = nxyz_xtrct[ilocal][8];
+      ix[0] = nxyz_xtrct[i][0];
+      ix[1] = nxyz_xtrct[i][1];
+      ix[2] = nxyz_xtrct[i][2];
+      iy[0] = nxyz_xtrct[i][3];
+      iy[1] = nxyz_xtrct[i][4];
+      iy[2] = nxyz_xtrct[i][5];
+      iz[0] = nxyz_xtrct[i][6];
+      iz[1] = nxyz_xtrct[i][7];
+      iz[2] = nxyz_xtrct[i][8];
 
       compute_interaction_sites(ix, iy, iz, ri_cs, ri_cb);
 
@@ -390,7 +387,6 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       delz = ztmp - x[j][2];
       jtype = type[j];
       jellipsoid = ellipsoid[j]; // < 0 if not an ellipsoid
-      jlocal = atom->map(tag[j]);
 
       // sanity check - should always be ellipsoid <-> non-ellipsoid interaction
       if ((iellipsoid >= 0 && jellipsoid >= 0) || (iellipsoid < 0 && jellipsoid < 0)) {
@@ -400,15 +396,15 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       if (jellipsoid >= 0) { // atom j is an ellipsoid, so atom i is not
         q_prod = qtmp * -qeff_dh[itype][jtype];
 
-        jx[0] = nxyz_xtrct[jlocal][0];
-        jx[1] = nxyz_xtrct[jlocal][1];
-        jx[2] = nxyz_xtrct[jlocal][2];
-        jy[0] = nxyz_xtrct[jlocal][3];
-        jy[1] = nxyz_xtrct[jlocal][4];
-        jy[2] = nxyz_xtrct[jlocal][5];
-        jz[0] = nxyz_xtrct[jlocal][6];
-        jz[1] = nxyz_xtrct[jlocal][7];
-        jz[2] = nxyz_xtrct[jlocal][8];
+        jx[0] = nxyz_xtrct[j][0];
+        jx[1] = nxyz_xtrct[j][1];
+        jx[2] = nxyz_xtrct[j][2];
+        jy[0] = nxyz_xtrct[j][3];
+        jy[1] = nxyz_xtrct[j][4];
+        jy[2] = nxyz_xtrct[j][5];
+        jz[0] = nxyz_xtrct[j][6];
+        jz[1] = nxyz_xtrct[j][7];
+        jz[2] = nxyz_xtrct[j][8];
 
         compute_interaction_sites(jx, jy, jz, rj_cs, rj_cb);
         
