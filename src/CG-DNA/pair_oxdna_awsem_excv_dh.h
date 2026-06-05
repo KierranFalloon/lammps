@@ -42,20 +42,22 @@ class PairOxdnaAwsemExcvDh : public Pair {
   double cut_coul_global;
   double **nxyz_xtrct;    // per-atom arrays for local unit vectors
   double **epsilon, **sigma, **cut_lj, **cut_ljsq; // LJ parameters
-  double lambda, kappa_one, **kappa, **qeff_dh, **cut_coul, **cut_coulsq; // DH parameters
+  double lambda, kappa_one, **kappa, *qeff_dh, **cut_coul, **cut_coulsq; // DH parameters
   double **lj1, **lj2, **lj3, **lj4, **offset;
 
   virtual void allocate();
 
   // potential file reading
   virtual void read_file(char *);
-  int N_VALUES = 20;
-  struct File { // potential file data
-   double *lj_epsilon;
-   double *lj_sigma;
-   double *qeff_dh;
-  };
-  File *file;
+  virtual void setup_params();
+  int N_VALUES = 80;
+  int N_AA_TYPES = 20; // A, R, N, D, C, Q, E, G, H, I, L, K, M, F, P, S, T, W, Y, V
+  int N_DNA_TYPES = 4; // A, C, T, G
+  int N_TYPES = 24;    // total number of types
+
+  class FixBackbone *fix_bb; // ptr to awsemmd backbone fix
+  int se_map[26] = {0, 0, 4, 3, 6, 13, 7, 8, 9, 0, 11, 10, 12, 2, 0, 14, 5, 1, 15, 16, 0, 19, 17, 0, 18, 0};
+  char one_letter_code[20] = {'A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V'};
 
   class FixOxdnaLRF *fix_lrf;    // ptr to oxdna/lrf fix
 };

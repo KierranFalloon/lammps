@@ -22,6 +22,7 @@
 #include "comm.h"
 #include "constants_oxdna.h"
 #include "error.h"
+#include "fix_backbone.h"
 #include "fix_oxdna_lrf.h"
 #include "force.h"
 #include "math_extra.h"
@@ -43,9 +44,7 @@ PairOxdnaAwsemExcvDh::PairOxdnaAwsemExcvDh(LAMMPS *lmp) : Pair(lmp)
 {
   single_enable = 0;
   writedata = 1;
-  offset_flag = 1;
   trim_flag = 0;
-  file = nullptr;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -78,7 +77,7 @@ PairOxdnaAwsemExcvDh::~PairOxdnaAwsemExcvDh()
 void PairOxdnaAwsemExcvDh::allocate()
 {
   allocated = 1;
-  int np1 = atom->ntypes + 1;
+  int np1 = N_TYPES;
 
   memory->create(setflag, np1, np1, "pair:setflag");
   for (int i = 1; i < np1; i++)
@@ -86,8 +85,9 @@ void PairOxdnaAwsemExcvDh::allocate()
 
   memory->create(cutsq, np1, np1, "pair:cutsq");
 
-  memory->create(epsilon, np1, np1, "pair:epsilon");
-  memory->create(sigma, np1, np1, "pair:sigma");
+  memory->create(epsilon, N_AA_TYPES, N_DNA_TYPES, "pair:epsilon");
+  memory->create(sigma, N_AA_TYPES, N_DNA_TYPES, "pair:sigma");
+
   memory->create(cut_lj, np1, np1, "pair:cut_lj");
   memory->create(cut_ljsq, np1, np1, "pair:cut_ljsq");
   memory->create(lj1, np1, np1, "pair:lj1");
@@ -96,7 +96,7 @@ void PairOxdnaAwsemExcvDh::allocate()
   memory->create(lj4, np1, np1, "pair:lj4");
   memory->create(offset, np1, np1, "pair:offset"); // E_cut
   memory->create(kappa, np1, np1, "pair:kappa");
-  memory->create(qeff_dh, np1, np1, "pair:qeff_dh");
+  memory->create(qeff_dh, np1, "pair:qeff_dh");
   memory->create(cut_coul, np1, np1, "pair:cut_coul");
   memory->create(cut_coulsq, np1, np1, "pair:cut_coulsq");
 }
@@ -115,8 +115,8 @@ void PairOxdnaAwsemExcvDh::settings(int narg, char **arg)
 
   if (allocated) {
     int i, j;
-    for (i = 1; i <= atom->ntypes; i++)
-      for (j = i; j <= atom->ntypes; j++)
+    for (i = 0; i <= N_TYPES; i++)
+      for (j = i; j <= N_TYPES; j++)
         if (setflag[i][j]) {
           cut_coul[i][j] = cut_coul_global;
         }
@@ -145,105 +145,109 @@ void PairOxdnaAwsemExcvDh::coeff(int narg, char **arg)
   // Debye-Huckel Parameters (eps_r = 80.0)
   lambda = ConstantsOxdna::get_lambda_dh_one_prefactor() * sqrt(T/0.1/rhos);
   kappa_one = 1.0/lambda; // inverse Debye length
-  if (comm->me == 0) fprintf(screen, "Debye Length = %g\n", lambda);
+  if (comm->me == 0) fprintf(screen, "Debye Length = %g, Kappa = %g\n", lambda, kappa_one);
 
-  // populate 'file' with data from the potential file
-  file = new File();
+  // populate arrays with data from the potential file
   read_file(arg[4]);
-
-  // temporary log to ensure correct values are set
-  std::string P_types[5] = {"Ca", "N", "O", "Cb", "H"};
-  std::string D_types[4] = {"A", "C", "G", "T"};
+  setup_params();
 
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
     for (int j = MAX(jlo, i); j <= jhi; j++) {
-      epsilon[i][j] = file->lj_epsilon[count];
-      sigma[i][j] = file->lj_sigma[count];
-      cut_lj[i][j] = sigma[i][j] * 1.144714243; // 1.1447 = (3/2)^(1/3)
-      qeff_dh[i][j] = file->qeff_dh[count];
-      if (comm->me == 0) {
-        fprintf(screen, "Pair coeffs for %s-%s: epsilon = %g, sigma = %g, cut_lj = %g, qeff_dh = %g\n",
-          P_types[i-ilo].c_str(), D_types[j-ihi-ilo].c_str(), epsilon[i][j], sigma[i][j], cut_lj[i][j], qeff_dh[i][j]);
-      }
-      kappa[i][j] = kappa_one;
-      cut_coul[i][j] = cut_coul_global;
+      kappa[i][j] = kappa_one; // parameter that changes with temperature
       setflag[i][j] = 1;
       count++;
     }
   }
-
-  memory->destroy(file->lj_epsilon);
-  memory->destroy(file->lj_sigma);
-  memory->destroy(file->qeff_dh);
-  delete file;
 
   if (count == 0) error->all(FLERR, "Incorrect args for pair_coeff of pair style oxdna/awsem/excv/dh");
 }
 
 void PairOxdnaAwsemExcvDh::read_file(char *filename)
 {
-  memory->create(file->lj_epsilon, N_VALUES, "pair:lj_epsilon");
-  memory->create(file->lj_sigma, N_VALUES, "pair:lj_sigma");
-  memory->create(file->qeff_dh, N_VALUES, "pair:dh_qeff");
-
   if (comm->me == 0) {
     PotentialFileReader reader(lmp, filename, "oxdna/awsem/excv/dh");
     try {
       reader.skip_line();
-      reader.skip_line();
 
       // read in the lj epsilon, sigma and dh qeff values
-      reader.next_dvector(file->lj_epsilon, N_VALUES);
-      reader.next_dvector(file->lj_sigma, N_VALUES);
-      reader.next_dvector(file->qeff_dh, N_VALUES);
+      reader.next_dvector(qeff_dh, N_TYPES);
+      for (int i=0; i<N_AA_TYPES; i++) {
+        reader.next_dvector(epsilon[i], N_DNA_TYPES);
+      }
+      for (int i=0; i<N_AA_TYPES; i++) {
+        reader.next_dvector(sigma[i], N_DNA_TYPES);
+      }
 
     } catch (TokenizerException &e) {
       error->one(FLERR, e.what());
     }
   }
 
-  MPI_Bcast(file->lj_epsilon, N_VALUES, MPI_DOUBLE, 0, world);
-  MPI_Bcast(file->lj_sigma, N_VALUES, MPI_DOUBLE, 0, world);
-  MPI_Bcast(file->qeff_dh, N_VALUES, MPI_DOUBLE, 0, world);
+  // broadcast parameters to all other processes
+  MPI_Bcast(qeff_dh, N_TYPES, MPI_DOUBLE, 0, world);
+  MPI_Bcast(&epsilon[0][0], N_VALUES, MPI_DOUBLE, 0, world);
+  MPI_Bcast(&sigma[0][0], N_VALUES, MPI_DOUBLE, 0, world);
+}
+
+void PairOxdnaAwsemExcvDh::setup_params()
+{
+  int i, j;
+  for (i = 0; i < N_AA_TYPES; i++) {
+    for (j = 0; j < N_DNA_TYPES; j++) {
+      int itype = i;              // AA types 0-19
+      int jtype = j + N_AA_TYPES; // DNA types 20-23
+
+      lj1[itype][jtype] = 36.0 * epsilon[i][j] * pow(sigma[i][j], 9.0);
+      lj2[itype][jtype] = 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
+      lj3[itype][jtype] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 9.0);
+      lj4[itype][jtype] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
+      cut_lj[itype][jtype] = sigma[i][j] * 1.144714243; // 1.1447 = (3/2)^(1/3)
+      cut_ljsq[itype][jtype] = cut_lj[itype][jtype] * cut_lj[itype][jtype];
+
+      if (cut_lj[itype][jtype] > 0.0) {
+        double ratio = sigma[i][j] / cut_lj[itype][jtype];
+        offset[itype][jtype] = 4.0 * epsilon[i][j] * (pow(ratio, 9.0) - pow(ratio, 6.0));
+      } else
+        offset[itype][jtype] = 0.0;
+
+      // kappa[itype][jtype] = kappa_one;
+      cut_coul[itype][jtype] = cut_coul_global;
+      cut_coulsq[itype][jtype] = cut_coul[itype][jtype] * cut_coul[itype][jtype];
+
+      // set j,i values
+      cut_ljsq[jtype][itype] = cut_ljsq[itype][jtype];
+      cut_coulsq[jtype][itype] = cut_coulsq[itype][jtype];
+      lj1[jtype][itype] = lj1[itype][jtype];
+      lj2[jtype][itype] = lj2[itype][jtype];
+      lj3[jtype][itype] = lj3[itype][jtype];
+      lj4[jtype][itype] = lj4[itype][jtype];
+      offset[jtype][itype] = offset[itype][jtype];
+
+      // kappa[jtype][itype] = kappa[itype][jtype];
+
+      setflag[itype][jtype] = 1;
+
+    }
+  }
 }
 
 /* ----------------------------------------------------------------------
    init for one type pair i,j and corresponding j,i
 ------------------------------------------------------------------------- */
 
-double PairOxdnaAwsemExcvDh::init_one(int i, int j)
+double PairOxdnaAwsemExcvDh::init_one(int a, int b)
 {
-  if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
-
-  double cut = MAX(cut_lj[i][j], cut_coul[i][j]);
-  cut_ljsq[i][j] = cut_lj[i][j] * cut_lj[i][j];
-  cut_coulsq[i][j] = cut_coul[i][j] * cut_coul[i][j];
-
-  lj1[i][j] = 36.0 * epsilon[i][j] * pow(sigma[i][j], 9.0);
-  lj2[i][j] = 24.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
-  lj3[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 9.0);
-  lj4[i][j] = 4.0 * epsilon[i][j] * pow(sigma[i][j], 6.0);
-
-  if (offset_flag && (cut_lj[i][j] > 0.0)) {
-    double ratio = sigma[i][j] / cut_lj[i][j];
-    offset[i][j] = 4.0 * epsilon[i][j] * (pow(ratio, 9.0) - pow(ratio, 6.0));
-  } else
-    offset[i][j] = 0.0;
-
-  cut_ljsq[j][i] = cut_ljsq[i][j];
-  cut_coulsq[j][i] = cut_coulsq[i][j];
-  lj1[j][i] = lj1[i][j];
-  lj2[j][i] = lj2[i][j];
-  lj3[j][i] = lj3[i][j];
-  lj4[j][i] = lj4[i][j];
-  offset[j][i] = offset[i][j];
-
-  epsilon[j][i] = epsilon[i][j];
-  sigma[j][i] = sigma[i][j];
-
-  kappa[j][i] = kappa[i][j];
-  qeff_dh[j][i] = qeff_dh[i][j];
+  kappa[b][a] = kappa[a][b];
+  double cut;
+  for (int i = 0; i < N_AA_TYPES; i++) {
+    for (int j = 0; j < N_DNA_TYPES; j++) {
+      int itype = i;              // AA types 0-19
+      int jtype = j + N_AA_TYPES; // DNA types 20-23
+      if (setflag[itype][jtype] == 0) error->all(FLERR, "All pair coeffs are not set");
+      cut = MAX(cut_lj[itype][jtype], cut_coul[itype][jtype]);
+    }
+  }
 
   return cut;
 }
@@ -274,6 +278,11 @@ void PairOxdnaAwsemExcvDh::init_style()
   if (fixes.size() == 0) error->all(FLERR, "Fix oxdna/lrf not found. Ensure pair oxdna/excv is present");
   else fix_lrf = dynamic_cast<FixOxdnaLRF *>(fixes[0]);
 
+  fix_bb = nullptr;
+  auto bbs = modify->get_fix_by_style("^backbone");
+  if (bbs.size() == 0) error->all(FLERR, "Fix backbone not found. Ensure AWSEMMD fix backbone is present");
+  else fix_bb = dynamic_cast<FixBackbone *>(bbs[0]);
+
   neighbor->add_request(this, NeighConst::REQ_DEFAULT);
 }
 
@@ -284,8 +293,8 @@ void PairOxdnaAwsemExcvDh::init_style()
 
 void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 {
-  int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid;
-  double qtmp,xtmp,ytmp,ztmp,delx,dely,delz,evdwl,ecoul,fpair;
+  int i,j,ii,jj,inum,jnum,itype,jtype,iellipsoid,jellipsoid,ires,jres,ires_type,jres_type;
+  double xtmp,ytmp,ztmp,delx,dely,delz,evdwl,ecoul,fpair;
   double r2inv_s,r2inv_b,r6inv_s,r6inv_b,r3inv_s,r3inv_b,forcecoul,forcelj,factor_coul,factor_lj;
   double r,rinv,screening;
   int *ilist,*jlist,*numneigh,**firstneigh;
@@ -326,6 +335,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
   auto avec = dynamic_cast<AtomVecEllipsoid *>(atom->style_match("ellipsoid"));
   AtomVecEllipsoid::Bonus *bonus = avec->bonus;
   int *ellipsoid = atom->ellipsoid;
+  int *res = atom->residue;
 
   // nxyz_xtrct = extracted local unit vectors in lab frame from fix oxdna/lrf
   nxyz_xtrct = fix_lrf->array_atom;
@@ -334,12 +344,16 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
 
   for (ii = 0; ii < inum; ii++) {
     i = ilist[ii];
-    qtmp = q[i];
     xtmp = x[i][0];
     ytmp = x[i][1];
     ztmp = x[i][2];
     itype = type[i];
     iellipsoid = ellipsoid[i]; // < 0 if not an ellipsoid
+    ires = res[i]-1; // < 0 if not a protein atom
+    if (ires >= 0)
+      ires_type = se_map[fix_bb->se[ires] - 'A']; // map current protein residue index to 0-19
+    else
+      ires_type = N_AA_TYPES + (itype - 6); // map DNA type to 20-23
     jlist = firstneigh[i];
     jnum = numneigh[i];
 
@@ -387,14 +401,23 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
       delz = ztmp - x[j][2];
       jtype = type[j];
       jellipsoid = ellipsoid[j]; // < 0 if not an ellipsoid
+      jres = res[j]-1; // < 0 if not a protein atom
+      q_prod = 0.0;
+
+      if (jres >= 0)
+        jres_type = se_map[fix_bb->se[jres] - 'A']; // map current protein residue index to 0-19
+      else
+        jres_type = N_AA_TYPES + (jtype - 6); // map DNA type to 20-23
 
       // sanity check - should always be ellipsoid <-> non-ellipsoid interaction
-      if ((iellipsoid >= 0 && jellipsoid >= 0) || (iellipsoid < 0 && jellipsoid < 0)) {
+      if ((iellipsoid >= 0 && ires >= 0) || (iellipsoid < 0 && ires < 0) ||
+          (jellipsoid >= 0 && jres >= 0) || (jellipsoid < 0 && jres < 0)) {
         error->all(FLERR, "Detected a pair of ellipsoids or a pair of non-ellipsoids interacting via the oxdna/awsem/excv/dh potential");
       }
 
       if (jellipsoid >= 0) { // atom j is an ellipsoid, so atom i is not
-        q_prod = qtmp * -qeff_dh[itype][jtype];
+        if (itype == 4)
+          q_prod = qeff_dh[ires_type] * qeff_dh[jres_type];
 
         jx[0] = nxyz_xtrct[j][0];
         jx[1] = nxyz_xtrct[j][1];
@@ -419,7 +442,8 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         delr_b[1] = rtmp_b[1] - (x[j][1] + rj_cb[1]);
         delr_b[2] = rtmp_b[2] - (x[j][2] + rj_cb[2]);
       } else { // j is not an ellipsoid, so i is
-        q_prod = q[j] * -qeff_dh[itype][jtype];
+        if (jtype == 4)
+          q_prod = qeff_dh[ires_type] * qeff_dh[jres_type];
 
         // as atom i is an ellipsoid, rtmp_s and rtmp_b are the DNA backbone and base site coordinates
         // DNA backbone site - protein atom COM
@@ -442,7 +466,7 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         r2inv_s = 1.0/rsq_s;
         
         // Debye-Huckel
-        if (q_prod != 0.0 && rsq_s < cut_coulsq[itype][jtype]) {
+        if (rsq_s < cut_coulsq[ires_type][jres_type]) {
           r = sqrt(rsq_s);
           rinv = 1.0/r;
           screening = exp(-kappa[itype][jtype]*r);
@@ -451,10 +475,10 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         } else forcecoul = 0.0;
 
         // Lennard-Jones
-        if (rsq_s < cut_ljsq[itype][jtype]) {
+        if (rsq_s < cut_ljsq[ires_type][jres_type]) {
           r6inv_s = r2inv_s*r2inv_s*r2inv_s;
           r3inv_s = sqrt(r6inv_s);
-          forcelj = r6inv_s * (lj1[itype][jtype]*r3inv_s - lj2[itype][jtype]);
+          forcelj = r6inv_s * (lj1[ires_type][jres_type]*r3inv_s - lj2[ires_type][jres_type]);
         } else forcelj = 0.0;
 
         // Both Debye-Huckel and Lennard-Jones excluded volume between COM and backbone site
@@ -489,12 +513,12 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         }
 
         if (eflag) {
-          if (q_prod != 0.0 && rsq_s < cut_coulsq[itype][jtype])
+          if (rsq_s < cut_coulsq[ires_type][jres_type])
             ecoul = factor_coul * ConstantsOxdna::get_qeff_dh_pf_one_prefactor() * q_prod * rinv * screening;
           else ecoul = 0.0;
-          if (rsq_s < cut_ljsq[itype][jtype]) {
-            evdwl = r6inv_s*(lj3[itype][jtype]*r3inv_s-lj4[itype][jtype]) -
-              offset[itype][jtype];
+          if (rsq_s < cut_ljsq[ires_type][jres_type]) {
+            evdwl = r6inv_s*(lj3[ires_type][jres_type]*r3inv_s-lj4[ires_type][jres_type]) -
+              offset[ires_type][jres_type];
             evdwl *= factor_lj;
           } else evdwl = 0.0;
         }
@@ -509,10 +533,10 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         r2inv_b = 1.0/rsq_b;
 
         // Lennard-Jones
-        if (rsq_b < cut_ljsq[itype][jtype]) {
+        if (rsq_b < cut_ljsq[ires_type][jres_type]) {
           r6inv_b = r2inv_b*r2inv_b*r2inv_b;
           r3inv_b = sqrt(r6inv_b);
-          forcelj = r6inv_b * (lj1[itype][jtype]*r3inv_b - lj2[itype][jtype]);
+          forcelj = r6inv_b * (lj1[ires_type][jres_type]*r3inv_b - lj2[ires_type][jres_type]);
         } else forcelj = 0.0;
         
         // Only Lennard-Jones excluded volume between COM and base site
@@ -547,9 +571,9 @@ void PairOxdnaAwsemExcvDh::compute(int eflag, int vflag)
         }
 
         if (eflag) {
-          if (rsq_b < cut_ljsq[itype][jtype]) {
-            evdwl = r6inv_b*(lj3[itype][jtype]*r3inv_b-lj4[itype][jtype]) -
-              offset[itype][jtype];
+          if (rsq_b < cut_ljsq[ires_type][jres_type]) {
+            evdwl = r6inv_b*(lj3[ires_type][jres_type]*r3inv_b-lj4[ires_type][jres_type]) -
+              offset[ires_type][jres_type];
             evdwl *= factor_lj;
           } else evdwl = 0.0;
         }
