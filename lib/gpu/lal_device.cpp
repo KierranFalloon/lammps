@@ -58,6 +58,7 @@ namespace LAMMPS_AL {
 
 template <class numtyp, class acctyp>
 DeviceT::Device() : _init_count(0), _device_init(false),
+                    _comm_gpu_allocated(false),
                     _gpu_mode(GPU_FORCE), _first_device(0),
                     _last_device(0), _platform_id(-1), _compiled(false),
                     _use_old_nbor_build(0), _use_device_sort(0) {
@@ -293,6 +294,8 @@ int DeviceT::init_device(MPI_Comm /*world*/, MPI_Comm replica, const int ngpu,
   // Set up a per device communicator
   MPI_Comm_split(node_comm,my_gpu,0,&_comm_gpu);
   MPI_Comm_rank(_comm_gpu,&_gpu_rank);
+  _comm_gpu_allocated=true;
+  MPI_Comm_free(&node_comm);
 
   #if !defined(CUDA_MPS_SUPPORT)
   if (_procs_per_gpu>1 && !gpu->sharing_supported(my_gpu))
@@ -1052,6 +1055,14 @@ void DeviceT::clear_device() {
     delete gpu;
     _device_init=false;
   }
+  // the global Device instance is destroyed after MPI_Finalize(), so the
+  // per-device communicator can only be freed when torn down before that
+  if (_comm_gpu_allocated) {
+    int mpi_finalized;
+    MPI_Finalized(&mpi_finalized);
+    if (!mpi_finalized) MPI_Comm_free(&_comm_gpu);
+    _comm_gpu_allocated=false;
+  }
 }
 
 template <class numtyp, class acctyp>
@@ -1189,11 +1200,19 @@ bool lmp_gpu_requires_host_neighbor()
 {
   UCL_Device gpu;
 
-#if USE_OPENCL
+#if defined(USE_OPENCL)
+  // AMD GPUs with shared (unified) host/device memory cannot reliably build
+  // neighbor lists on the device with the OpenCL API.
   if (gpu.num_platforms() > 0) {
     auto name = gpu.platform_name();
-    if (name.find("AMD") && gpu.shared_memory(0)) return true;
+    if ((name.find("AMD") != std::string::npos) && gpu.shared_memory(0)) return true;
   }
+#elif defined(USE_HIP)
+  // Integrated AMD GPUs (APUs sharing host memory) cannot reliably build neighbor
+  // lists on the device with the HIP API either: device neighbor builds trigger a
+  // memory access fault (e.g. lj/cut/dipole/cut) or hit the ellipsoid/sphere-mix
+  // restriction (e.g. gayberne). Force host-side neighbor lists, matching OpenCL.
+  if (gpu.num_devices() > 0 && gpu.integrated(0)) return true;
 #endif
 
   return false;

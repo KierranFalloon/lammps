@@ -111,7 +111,7 @@ FixShakeKokkos<DeviceType>::~FixShakeKokkos()
   k_shake_flag.sync_host();
   k_shake_atom.sync_host();
 
-  for (int i = 0; i < nlocal; i++) {
+  for (int i = 0; i < atomKK->nlocal; i++) {
     if (shake_flag[i] == 0) continue;
     else if (shake_flag[i] == 1) {
       bondtype_findset(i,shake_atom[i][0],shake_atom[i][1],1);
@@ -147,6 +147,15 @@ FixShakeKokkos<DeviceType>::~FixShakeKokkos()
 template<class DeviceType>
 void FixShakeKokkos<DeviceType>::init()
 {
+  // FixShake::init() reads shake_flag/shake_atom/shake_type through the
+  // plain host pointers to recompute angle_distance[]; comm->exchange()
+  // updates the device copies only, so the host side must be brought
+  // current before FixShake::init() can see this run's cluster data
+
+  k_shake_flag.sync_host();
+  k_shake_atom.sync_host();
+  k_shake_type.sync_host();
+
   FixShake::init();
 
   if (utils::strmatch(update->integrate_style,"^respa"))

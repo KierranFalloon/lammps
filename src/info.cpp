@@ -510,10 +510,12 @@ void Info::command(int narg, char **arg)
     char **names = group->names;
     int *dynamic = group->dynamic;
     fputs("\nGroup information:\n",out);
-    for (int i=0; i < ngroup; ++i) {
-      if (names[i])
+    for (int i=0; i < Group::MAX_GROUP; ++i) {
+      // skip over deleted groups
+      if (names[i]) {
         utils::print(out,"Group[{:2d}]:     {:16} ({})\n",
-                   i, names[i], dynamic[i] ? "dynamic" : "static");
+                     i, names[i], dynamic[i] ? "dynamic" : "static");
+      }
     }
   }
 
@@ -522,7 +524,7 @@ void Info::command(int narg, char **arg)
     int i=0;
     for (const auto &reg : domain->get_region_list()) {
       utils::print(out,"Region[{:3d}]:  {:16}  style = {:16}  side = {}\n",
-                 i, std::string(reg->id)+',', std::string(reg->style)+',',
+                 i++, std::string(reg->id)+',', std::string(reg->style)+',',
                  reg->interior ? "in" : "out");
       if (reg->bboxflag)
         utils::print(out,"   Boundary:  lo {:.8} {:.8} {:.8}  hi {:.8} {:.8} {:.8}\n",

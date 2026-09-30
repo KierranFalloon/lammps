@@ -237,6 +237,7 @@ bigint ReaderNative::read_header(double box[3][3], int &boxinfo, int &triclinic,
       }
 
       read_buf(&len, sizeof(int), 1);
+      if (len < 0) error->one(FLERR,"Dump file is invalid or corrupted");
       labelline = read_binary_str(len);
     } else {
       error->one(FLERR, "Unsupported old binary dump format");
@@ -254,6 +255,10 @@ bigint ReaderNative::read_header(double box[3][3], int &boxinfo, int &triclinic,
     triclinic = 0;
     box[0][2] = box[1][2] = box[2][2] = 0.0;
     read_lines(1);
+    if (utils::strmatch(line,"ITEM: BOX BOUNDS.*abc\\s+origin")) {
+      error->one(FLERR, Error::NOLASTLINE,
+                 "Dump files in general triclinic format are not (yet) supported");
+    }
     if (utils::strmatch(line,"ITEM: BOX BOUNDS.*xy\\s+xz\\s+yz")) triclinic = 1;
 
     try {
@@ -454,6 +459,7 @@ void ReaderNative::read_atoms(int n, int nfield, double **fields)
       // if the last chunk has finished
       if (iatom_chunk == 0) {
           read_buf(&natom_chunk, sizeof(int), 1);
+          if (natom_chunk < 0) error->one(FLERR,"Dump file is invalid or corrupted");
           read_double_chunk(natom_chunk);
           natom_chunk /= size_one;
           m = 0;

@@ -48,7 +48,7 @@ int **eam_alloy_gpu_compute_n(const int ago, const int inum_full, const int nall
                               int **nspecial, tagint **special, const bool eflag, const bool vflag,
                               const bool eatom, const bool vatom, int &host_start, int **ilist,
                               int **jnum, const double cpu_time, bool &success, int &inum,
-                              void **fp_ptr);
+                              void **fp_ptr, double *prd, int *periodicity);
 void eam_alloy_gpu_compute(const int ago, const int inum_full, const int nlocal, const int nall,
                            double **host_x, int *host_type, int *ilist, int *numj, int **firstneigh,
                            const bool eflag, const bool vflag, const bool eatom, const bool vatom,
@@ -114,7 +114,8 @@ void PairEAMAlloyGPU::compute(int eflag, int vflag)
     firstneigh = eam_alloy_gpu_compute_n(neighbor->ago, inum, nall, atom->x, atom->type, sublo,
                                          subhi, atom->tag, atom->nspecial, atom->special, eflag,
                                          vflag, eflag_atom, vflag_atom, host_start, &ilist,
-                                         &numneigh, cpu_time, success, inum_dev, &fp_pinned);
+                                         &numneigh, cpu_time, success, inum_dev, &fp_pinned,
+                                         domain->prd, domain->periodicity);
   } else {    // gpu_mode == GPU_FORCE
     inum = list->inum;
     ilist = list->ilist;
@@ -393,7 +394,7 @@ void PairEAMAlloyGPU::read_file(char *filename)
         reader.next_dvector(&file->frho[i][1], file->nrho);
         reader.next_dvector(&file->rhor[i][1], file->nr);
         if (unit_convert) {
-          for (int j = 1; j < file->nrho; ++j) file->frho[i][j] *= conversion_factor;
+          for (int j = 1; j <= file->nrho; ++j) file->frho[i][j] *= conversion_factor;
         }
       }
 
@@ -401,7 +402,7 @@ void PairEAMAlloyGPU::read_file(char *filename)
         for (int j = 0; j <= i; j++) {
           reader.next_dvector(&file->z2r[i][j][1], file->nr);
           if (unit_convert) {
-            for (int k = 1; k < file->nr; ++k) file->z2r[i][j][k] *= conversion_factor;
+            for (int k = 1; k <= file->nr; ++k) file->z2r[i][j][k] *= conversion_factor;
           }
         }
       }

@@ -176,7 +176,7 @@ void FixNVESpin::init()
     if (hybrid == nullptr) npairs = 1;
     else npairs = hybrid->nstyles;
     for (int i = 0; i<npairs; i++) {
-      if (force->pair_match("^spin",0,i)) {
+      if (force->pair_match("^spin",0,i+1)) {
         npairspin ++;
       }
     }
@@ -197,8 +197,8 @@ void FixNVESpin::init()
     spin_pairs[0] = dynamic_cast<PairSpin *>(force->pair_match("^spin",0,0));
   } else if (npairspin > 1) {
     for (int i = 0; i<npairs; i++) {
-      if (force->pair_match("^spin",0,i)) {
-        spin_pairs[count1] = dynamic_cast<PairSpin *>(force->pair_match("^spin",0,i));
+      if (force->pair_match("^spin",0,i+1)) {
+        spin_pairs[count1] = dynamic_cast<PairSpin *>(force->pair_match("^spin",0,i+1));
         count1++;
       }
     }
@@ -297,6 +297,7 @@ void FixNVESpin::init()
   // setting the sector variables/lists
 
   nsectors = 0;
+  memory->destroy(rsec);
   memory->create(rsec,3,"nve/spin:rsec");
 
   // perform the sectoring operation
@@ -349,22 +350,24 @@ void FixNVESpin::initial_integrate(int /*vflag*/)
       comm->forward_comm();
       int i = stack_foot[j];
       while (i >= 0) {
+        const int next = forward_stacks[i];
         if (mask[i] & groupbit) {
           ComputeInteractionsSpin(i);
           AdvanceSingleSpin(i);
-          i = forward_stacks[i];
         }
+        i = next;
       }
     }
     for (int j = nsectors-1; j >= 0; j--) {     // advance quarter s for nlocal
       comm->forward_comm();
       int i = stack_head[j];
       while (i >= 0) {
+        const int next = backward_stacks[i];
         if (mask[i] & groupbit) {
           ComputeInteractionsSpin(i);
           AdvanceSingleSpin(i);
-          i = backward_stacks[i];
         }
+        i = next;
       }
     }
   } else {                                       // serial seq. update
@@ -402,22 +405,24 @@ void FixNVESpin::initial_integrate(int /*vflag*/)
       comm->forward_comm();
       int i = stack_foot[j];
       while (i >= 0) {
+        const int next = forward_stacks[i];
         if (mask[i] & groupbit) {
           ComputeInteractionsSpin(i);
           AdvanceSingleSpin(i);
-          i = forward_stacks[i];
         }
+        i = next;
       }
     }
     for (int j = nsectors-1; j >= 0; j--) {     // advance quarter s for nlocal
       comm->forward_comm();
       int i = stack_head[j];
       while (i >= 0) {
+        const int next = backward_stacks[i];
         if (mask[i] & groupbit) {
           ComputeInteractionsSpin(i);
           AdvanceSingleSpin(i);
-          i = backward_stacks[i];
         }
+        i = next;
       }
     }
   } else {                                      // serial seq. update

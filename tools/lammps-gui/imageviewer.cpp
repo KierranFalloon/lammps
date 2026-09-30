@@ -147,12 +147,13 @@ ImageViewer::ImageViewer(const QString &fileName, LammpsWrapper *_lammps, QWidge
     usediameter(false), usesigma(false)
 {
     imageLabel->setBackgroundRole(QPalette::Base);
-    imageLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-    imageLabel->setScaledContents(true);
+    imageLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+    imageLabel->setScaledContents(false);
     imageLabel->minimumSizeHint();
 
     scrollArea->setBackgroundRole(QPalette::Dark);
     scrollArea->setWidget(imageLabel);
+    scrollArea->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
     scrollArea->setVisible(false);
 
     auto *mainLayout = new QVBoxLayout;
@@ -163,7 +164,11 @@ ImageViewer::ImageViewer(const QString &fileName, LammpsWrapper *_lammps, QWidge
     shinyfactor = 0.6;
     auto pix    = QPixmap(":/icons/emblem-photos.png");
     xcenter = ycenter = zcenter = 0.5;
+    if (lammps->extract_setting("dimension") == 2) zcenter = 0.0;
     auto bsize = QFontMetrics(QApplication::font()).size(Qt::TextSingleLine, "Height:  200");
+#if defined(Q_OS_WIN32)
+    bsize = bsize * 3 / 2;
+#endif
 
     auto *renderstatus = new QLabel(QString());
     renderstatus->setPixmap(pix.scaled(22, 22, Qt::KeepAspectRatio));
@@ -324,13 +329,13 @@ ImageViewer::ImageViewer(const QString &fileName, LammpsWrapper *_lammps, QWidge
     connect(molbox, SIGNAL(currentIndexChanged(int)), this, SLOT(change_molecule(int)));
 
     mainLayout->addLayout(topLayout);
-    mainLayout->addWidget(scrollArea);
+    mainLayout->addWidget(scrollArea, 10);
     setWindowIcon(QIcon(":/icons/lammps-icon-128x128.png"));
     setWindowTitle(QString("LAMMPS-GUI - Image Viewer - ") + QFileInfo(fileName).fileName());
     createActions();
 
     reset_view();
-    // layout has not yet be established, so we need to fix up some pushbutton
+    // layout has not yet been established, so we need to fix up some pushbutton
     // properties directly since lookup in reset_view() will have failed
     dobox->setChecked(showbox);
     doshiny->setChecked(shinyfactor > 0.4);
@@ -341,11 +346,26 @@ ImageViewer::ImageViewer(const QString &fileName, LammpsWrapper *_lammps, QWidge
     doanti->setChecked(antialias);
 
     scaleFactor = 1.0;
-    resize(image.width() + 25, image.height() + 80);
 
     scrollArea->setVisible(true);
     updateActions();
     setLayout(mainLayout);
+    mainLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+    adjustSize();
+    menuBar->setFocus();
+
+    // set window flags for window manager
+    auto flags = windowFlags();
+    flags &= ~Qt::Dialog;
+    flags |= Qt::CustomizeWindowHint;
+    flags |= Qt::WindowMinimizeButtonHint;
+    // must add maximize button for macOS to allow resizing, but remove on other platforms
+#if defined(Q_OS_MACOS)
+    flags |= Qt::WindowMaximizeButtonHint;
+#else
+    flags &= ~Qt::WindowMaximizeButtonHint;
+#endif
+    setWindowFlags(flags);
 }
 
 void ImageViewer::reset_view()
@@ -364,6 +384,7 @@ void ImageViewer::reset_view()
     usessao     = settings.value("ssao", false).toBool();
     antialias   = settings.value("antialias", false).toBool();
     xcenter = ycenter = zcenter = 0.5;
+    if (lammps->extract_setting("dimension") == 2) zcenter = 0.0;
     settings.endGroup();
 
     // reset state of checkable push buttons and combo box (if accessible)
@@ -517,6 +538,7 @@ void ImageViewer::do_recenter()
     xcenter = lammps->extract_variable("LAMMPSGUI_CX");
     ycenter = lammps->extract_variable("LAMMPSGUI_CY");
     zcenter = lammps->extract_variable("LAMMPSGUI_CZ");
+    if (lammps->extract_setting("dimension") == 2) zcenter = 0.0;
     lammps->commands_string("variable LAMMPSGUI_CX delete\n"
                             "variable LAMMPSGUI_CY delete\n"
                             "variable LAMMPSGUI_CZ delete\n");
@@ -537,7 +559,15 @@ void ImageViewer::cmd_to_clipboard()
 
     std::string dumpcmd = "dump viz ";
     dumpcmd += words[1];
-    dumpcmd += " image 100 myimage-*.ppm";
+
+    if (lammps->config_has_png_support()) {
+        dumpcmd += " image 100 myimage-*.png";
+    } else if (lammps->config_has_jpeg_support()) {
+        dumpcmd += " image 100 myimage-*.jpg";
+    } else {
+        dumpcmd += " image 100 myimage-*.ppm";
+    }
+
     for (int i = 4; i < modidx; ++i)
         if (words[i] != "noinit") dumpcmd += " " + words[i];
     dumpcmd += '\n';
@@ -547,9 +577,14 @@ void ImageViewer::cmd_to_clipboard()
         dumpcmd += " " + words[i];
     dumpcmd += '\n';
 #if QT_CONFIG(clipboard)
-    QGuiApplication::clipboard()->setText(dumpcmd.c_str());
+    auto *clip = QGuiApplication::clipboard();
+    if (clip) {
+        clip->setText(dumpcmd.c_str(), QClipboard::Clipboard);
+        if (clip->supportsSelection()) clip->setText(dumpcmd.c_str(), QClipboard::Selection);
+    } else
+        fprintf(stderr, "# customized dump image command:\n%s", dumpcmd.c_str());
 #else
-    fprintf(stderr, "# customized dump image command:\n%s", dumpcmd.c_str())
+    fprintf(stderr, "# customized dump image command:\n%s", dumpcmd.c_str());
 #endif
 }
 
@@ -761,7 +796,10 @@ void ImageViewer::createImage()
     // show show image
     image = newImage;
     imageLabel->setPixmap(QPixmap::fromImage(image));
-    imageLabel->adjustSize();
+    imageLabel->setMinimumSize(image.width(), image.height());
+    imageLabel->resize(image.width(), image.height());
+    scrollArea->setMinimumSize(image.width() + 2, image.height() + 2);
+    adjustSize();
     if (renderstatus) renderstatus->setEnabled(false);
     repaint();
 

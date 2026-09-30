@@ -1157,7 +1157,7 @@ void ReadDump::migrate_atoms_by_coords()
 
 int ReadDump::fields_and_keywords(int narg, char **arg)
 {
-  // per-field vectors, leave space for ID and TYPE
+  // per-field vectors, leave extra space for ID and TYPE
 
   fieldtype = new int[narg+2];
   fieldlabel = new char*[narg+2];
@@ -1175,6 +1175,7 @@ int ReadDump::fields_and_keywords(int narg, char **arg)
   nfield = 0;
   fieldtype[nfield++] = Reader::ID;
   if (iarg < narg) {
+    // must include type field since we found "add yes" or "add keep"
     if (comm->me == 0) utils::logmesg(lmp, "Adding 'type' field to requested per-atom fields\n");
     fieldtype[nfield++] = Reader::TYPE;
   }
@@ -1189,14 +1190,17 @@ int ReadDump::fields_and_keywords(int narg, char **arg)
       error->all(FLERR,"Read dump of charge property that isn't supported by atom style");
     if (type == Reader::APIP_LAMBDA && !atom->apip_lambda_flag)
       error->all(FLERR,"Read dump of apip_lambda property that isn't supported by atom style");
-    fieldtype[nfield++] = type;
+
     iarg++;
+    if (type == Reader::ID) continue; // already present since added by default
+    if ((type == Reader::TYPE) && (nfield > 1) && (fieldtype[1] == Reader::TYPE)) continue;
+    fieldtype[nfield++] = type;
   }
 
   // check for no fields
 
   if (fieldtype[nfield-1] == Reader::ID || fieldtype[nfield-1] == Reader::TYPE)
-    error->all(FLERR,"Read_dump command is empty or starts with an invalid field. Use at least 'id' or 'type'.");
+    error->all(FLERR,"Read_dump command has no or invalid attribute fields");
 
   if (domain->dimension == 2) {
     for (int i = 0; i < nfield; i++)
@@ -1208,7 +1212,7 @@ int ReadDump::fields_and_keywords(int narg, char **arg)
   for (int i = 0; i < nfield; i++)
     for (int j = i+1; j < nfield; j++)
       if (fieldtype[i] == fieldtype[j])
-        error->all(FLERR,"Duplicate fields in read_dump command");
+        error->all(FLERR,"Duplicate fields {} and {} in read_dump command", arg[i], arg[j]);
 
   // parse optional args
 

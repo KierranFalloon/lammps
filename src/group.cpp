@@ -39,7 +39,6 @@
 
 using namespace LAMMPS_NS;
 
-static constexpr int MAX_GROUP = 32;
 static constexpr double EPSILON = 1.0e-6;
 
 enum { NONE, TYPE, MOLECULE, ID };
@@ -152,7 +151,7 @@ void Group::assign(int narg, char **arg)
   bool created = false;
 
   if (igroup == -1) {
-    if (ngroup == MAX_GROUP) error->all(FLERR, "Too many groups (max {})", MAX_GROUP);
+    if (ngroup == MAX_GROUP) error->all(FLERR, "Too many groups (max {})", int(MAX_GROUP));
     igroup = find_unused();
     names[igroup] = utils::strdup(arg[0]);
     ngroup++;
@@ -592,7 +591,7 @@ void Group::create(const std::string &name, int *flag)
   int igroup = find(name);
 
   if (igroup == -1) {
-    if (ngroup == MAX_GROUP) error->all(FLERR, "Too many groups (max {})", MAX_GROUP);
+    if (ngroup == MAX_GROUP) error->all(FLERR, "Too many groups (max {})", int(MAX_GROUP));
     igroup = find_unused();
     names[igroup] = utils::strdup(name);
     ngroup++;
@@ -629,7 +628,7 @@ int Group::find_or_create(const char *name)
   int igroup = find(name);
   if (igroup >= 0) return igroup;
 
-  if (ngroup == MAX_GROUP) error->all(FLERR, "Too many groups (max {})", MAX_GROUP);
+  if (ngroup == MAX_GROUP) error->all(FLERR, "Too many groups (max {})", int(MAX_GROUP));
   igroup = find_unused();
   names[igroup] = utils::strdup(name);
   ngroup++;
@@ -781,6 +780,7 @@ void Group::read_restart(FILE *fp)
     }
     if (me == 0) utils::sfread(FLERR, &n, sizeof(int), 1, fp, nullptr, error);
     MPI_Bcast(&n, 1, MPI_INT, 0, world);
+    if ((n < 0) || (n > 65536)) error->all(FLERR, "Invalid group name length in restart file");
     if (n) {
       names[i] = new char[n];
       if (me == 0) utils::sfread(FLERR, names[i], sizeof(char), n, fp, nullptr, error);

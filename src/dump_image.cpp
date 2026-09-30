@@ -441,8 +441,8 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
     else if (i % 6 == 2) colortype[i] = image->color2rgb("green");
     else if (i % 6 == 3) colortype[i] = image->color2rgb("blue");
     else if (i % 6 == 4) colortype[i] = image->color2rgb("yellow");
-    else if (i % 6 == 5) colortype[i] = image->color2rgb("aqua");
-    else if (i % 6 == 0) colortype[i] = image->color2rgb("cyan");
+    else if (i % 6 == 5) colortype[i] = image->color2rgb("cyan");
+    else if (i % 6 == 0) colortype[i] = image->color2rgb("magenta");
   }
 
   if (bondflag) {
@@ -454,8 +454,8 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       else if (i % 6 == 2) bcolortype[i] = image->color2rgb("green");
       else if (i % 6 == 3) bcolortype[i] = image->color2rgb("blue");
       else if (i % 6 == 4) bcolortype[i] = image->color2rgb("yellow");
-      else if (i % 6 == 5) bcolortype[i] = image->color2rgb("aqua");
-      else if (i % 6 == 0) bcolortype[i] = image->color2rgb("cyan");
+      else if (i % 6 == 5) bcolortype[i] = image->color2rgb("cyan");
+      else if (i % 6 == 0) bcolortype[i] = image->color2rgb("magenta");
     }
   } else {
     bdiamtype = nullptr;
@@ -1109,7 +1109,9 @@ void DumpImage::create_image()
 
       if (bodycolor == TYPE) {
         itype = static_cast<int>(buf[m]);
-        color = colortype[itype];
+        color = colortype[(itype % atom->ntypes) + 1];
+      } else {
+        color = image->color2rgb("white");
       }
 
       ibonus = body[j];
@@ -1225,9 +1227,9 @@ void DumpImage::create_image()
           if (adiam == NUMERIC) {
             diameter = adiamvalue;
           } else if (adiam == TYPE) {
-            diameter = MIN(diamtype[type[atom1]],diamtype[type[atom1]]);
+            diameter = MIN(diamtype[type[atom1]],diamtype[type[atom2]]);
           } else if (adiam == ELEMENT) {
-            diameter = MIN(diamelement[type[atom1]],diamelement[type[atom1]]);
+            diameter = MIN(diamelement[type[atom1]],diamelement[type[atom2]]);
           } else if (adiam == ATTRIBUTE) {
             diameter = MIN(bufcopy[atom1][1],bufcopy[atom2][1]);
           }
@@ -1283,14 +1285,14 @@ void DumpImage::create_image()
       } else if (fixvec[i] == LINE) {
         if (fixcolor == TYPE) {
           itype = static_cast<int>(fixarray[i][0]);
-          color = colortype[itype];
+          color = colortype[(itype % atom->ntypes) + 1];
         }
         image->draw_cylinder(&fixarray[i][1],&fixarray[i][4],
                              color,fixflag1,3);
       } else if (fixvec[i] == TRI) {
         if (fixcolor == TYPE) {
           itype = static_cast<int>(fixarray[i][0]);
-          color = colortype[itype];
+          color = colortype[(itype % atom->ntypes) + 1];
         }
         p1 = &fixarray[i][1];
         p2 = &fixarray[i][4];

@@ -55,7 +55,29 @@
   </provides>
 
   <releases>
-   <release version="1.7.1" timestamp="1754346906">
+    <release version="1.7.3" timestamp="1766154745">
+      <description>
+        Correct dump image centering for 2d systems
+        Prefer PNG or JEPG format images in suggested dump image command line
+        Copy dump image suggested command also into selection buffer where supported
+        Switch to user home, if dropped into Windows system folder
+        Make image file name selectable by mouse in slide show
+        Support overriding window size from command line
+        Check if temporary file can be created when passing viz info to VMD
+        Check if temporary file can be created when passing images to FFMpeg
+      </description>
+    </release>
+    <release version="1.7.2" timestamp="1757684513">
+      <description>
+        Update checksum for updated release of WHAM code
+        Support copying text with drag-n-drop
+        When checking for executables, truncate result to first line so it does not fail on Windows when the same executable is in multiple locations in the path
+        Before writing an image from image viewer, make sure no leftover dump ID is defined in case a previous write_dump command failed
+        Open new LAMMPS-GUI homepage instead of Howto page
+        Several minor tweaks and programming style updates
+      </description>
+    </release>
+    <release version="1.7.1" timestamp="1754346906">
       <description>
         Fix bugs when using filenames or paths with blanks.
         Add action to editor context menu to open the Commands_all.html manual page

@@ -271,7 +271,7 @@ a vector whose coordinates are chosen randomly in the range [-1/2 bin
 size, 1/2 bin size].  Note that all particles are shifted by the same
 vector.  The specified random number *shiftseed* is used to generate
 these vectors.  This operation sufficiently randomizes which SRD
-particles are in the same bin, even if :math:`lambda` is small.
+particles are in the same bin, even if :math:`\lambda` is small.
 
 If the *shift* flag is set to *no*, then no shifting is performed, but
 bin data will be communicated if bins overlap processor boundaries.  An

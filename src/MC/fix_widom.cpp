@@ -41,6 +41,7 @@
 #include "pair.h"
 #include "random_park.h"
 #include "region.h"
+#include "suffix.h"
 #include "update.h"
 
 #include <cmath>
@@ -281,7 +282,10 @@ int FixWidom::setmask()
 
 void FixWidom::init()
 {
-  if (!atom->mass) error->all(FLERR, "Fix widom requires per atom type masses");
+  if (force->pair && (force->pair->suffix_flag & Suffix::INTEL))
+    error->all(FLERR, Error::NOLASTLINE, "Fix {} is not compatible with /intel pair styles", style);
+
+  if (!atom->mass) error->all(FLERR, Error::NOLASTLINE, "Fix widom requires per atom type masses");
   if (atom->rmass_flag && (comm->me == 0))
     error->warning(FLERR, "Fix widom will use per atom type masses for velocity initialization");
 
@@ -291,14 +295,14 @@ void FixWidom::init()
 
   if (idregion) {
     region = domain->get_region_by_id(idregion);
-    if (!region) error->all(FLERR, "Region {} for fix widom does not exist", idregion);
+    if (!region) error->all(FLERR, Error::NOLASTLINE, "Region {} for fix widom does not exist", idregion);
   }
 
   if (region) {
     if (region->bboxflag == 0)
-      error->all(FLERR,"Fix widom region does not support a bounding box");
+      error->all(FLERR, Error::NOLASTLINE, "Fix widom region does not support a bounding box");
     if (region->dynamic_check())
-      error->all(FLERR,"Fix widom region cannot be dynamic");
+      error->all(FLERR, Error::NOLASTLINE, "Fix widom region cannot be dynamic");
 
     region_xlo = region->extent_xlo;
     region_xhi = region->extent_xhi;

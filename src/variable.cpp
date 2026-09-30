@@ -755,6 +755,14 @@ int Variable::next(int narg, char **arg)
       error->all(FLERR,"All variables in next command must have same style");
   }
 
+  // reject duplicate variable names: incrementing the first copy may
+  // exhaust and remove the variable, leaving a dangling reference
+
+  for (int iarg = 0; iarg < narg-1; iarg++)
+    for (int jarg = iarg+1; jarg < narg; jarg++)
+      if (strcmp(arg[iarg],arg[jarg]) == 0)
+        error->all(FLERR, jarg, "Duplicate variable '{}' in next command", arg[jarg]);
+
   // invalid styles: STRING, EQUAL, WORLD, GETENV, ATOM, VECTOR,
   //                 FORMAT, PYTHON, TIMER, INTERNAL
 
@@ -1147,8 +1155,10 @@ char *Variable::retrieve(const char *name)
 
 double Variable::compute_equal(int ivar)
 {
-  if (eval_in_progress[ivar])
-    print_var_error(FLERR,"has a circular dependency",ivar);
+  // do nothing for out of range index
+  if ((ivar < 0) || (ivar >= nvar)) return 0.0;
+
+  if (eval_in_progress[ivar]) print_var_error(FLERR,"has a circular dependency",ivar);
 
   eval_in_progress[ivar] = 1;
 
@@ -1191,8 +1201,10 @@ void Variable::compute_atom(int ivar, int igroup, double *result, int stride, in
   Tree *tree = nullptr;
   double *vstore;
 
-  if (eval_in_progress[ivar])
-    print_var_error(FLERR,"has a circular dependency",ivar);
+  // index out of range. do nothing.
+  if ((ivar < 0) || (ivar >= maxvar)) return;
+
+  if (eval_in_progress[ivar]) print_var_error(FLERR, "has a circular dependency",ivar);
 
   eval_in_progress[ivar] = 1;
 
@@ -1263,6 +1275,10 @@ int Variable::compute_vector(int ivar, double **result)
 {
   Tree *tree = nullptr;
 
+  // index is out-of-range. do nothing
+
+  if ((ivar < 0) || (ivar >= nvar)) return 0;
+
   // if vector is not dynamic, just return stored values
 
   if (!vecs[ivar].dynamic) {
@@ -1279,8 +1295,7 @@ int Variable::compute_vector(int ivar, double **result)
 
   // evaluate vector variable afresh
 
-  if (eval_in_progress[ivar])
-    print_var_error(FLERR,"has a circular dependency",ivar);
+  if (eval_in_progress[ivar]) print_var_error(FLERR,"has a circular dependency",ivar);
 
   eval_in_progress[ivar] = 1;
 
@@ -1288,10 +1303,8 @@ int Variable::compute_vector(int ivar, double **result)
   evaluate(data[ivar][0],&tree,ivar);
   collapse_tree(tree);
   int nlen = size_tree_vector(tree);
-  if (nlen == 0)
-    print_var_error(FLERR,"Vector-style variable has zero length",ivar);
-  if (nlen < 0)
-    print_var_error(FLERR,"Inconsistent lengths in vector-style variable",ivar);
+  if (nlen == 0) print_var_error(FLERR,"Vector-style variable has zero length",ivar);
+  if (nlen < 0) print_var_error(FLERR,"Inconsistent lengths in vector-style variable",ivar);
 
   // (re)allocate space for results if necessary
 
@@ -1358,8 +1371,13 @@ void Variable::remove(int n)
   delete[] names[n];
   if (style[n] == LOOP || style[n] == ULOOP) delete[] data[n][0];
   else for (int i = 0; i < num[n]; i++) delete[] data[n][i];
+  if (style[n] == VECTOR) memory->destroy(vecs[n].values);
   delete[] data[n];
   delete reader[n];
+  vecs[n].n = vecs[n].nmax = 0;
+  vecs[n].dynamic = 1;
+  vecs[n].currentstep = -1;
+  vecs[n].values = nullptr;
 
   for (int i = n+1; i < nvar; i++) {
     names[i-1] = names[i];
@@ -2710,8 +2728,10 @@ double Variable::collapse_tree(Tree *tree)
     arg2 = collapse_tree(tree->second);
     if (tree->first->type != VALUE || tree->second->type != VALUE) return 0.0;
     tree->type = VALUE;
-    if (arg2 == 0.0) error->one(FLERR,"Power by 0 in variable formula");
-    tree->value = pow(arg1,arg2);
+    if (arg2 == 0.0) tree->value = 1.0;
+    else if ((arg1 == 0.0) && (arg2 < 0.0))
+      error->one(FLERR,"Invalid power expression in variable formula");
+    else tree->value = pow(arg1,arg2);
     return tree->value;
   }
 
@@ -3078,7 +3098,6 @@ double Variable::collapse_tree(Tree *tree)
         ivalue3-ivalue1+1 < ivalue2 )
       error->all(FLERR,"Invalid math function in variable formula");
     if (update->ntimestep < ivalue1) tree->value = ivalue1;
-    //else if (update->ntimestep <= ivalue3) {
     else {
       tree->value = ivalue1;
       double logsp = ivalue1;
@@ -3277,9 +3296,12 @@ double Variable::eval_tree(Tree *tree, int i)
     return fmod(eval_tree(tree->first,i),denom);
   }
   if (tree->type == CARAT) {
+    double base = eval_tree(tree->first,i);
     double exponent = eval_tree(tree->second,i);
-    if (exponent == 0.0) error->one(FLERR,"Power by 0 in variable formula");
-    return pow(eval_tree(tree->first,i),exponent);
+    if (exponent == 0.0) return 1.0;
+    else if ((base == 0.0) && (exponent < 0.0))
+      error->one(FLERR,"Invalid power expression in variable formula");
+    else return pow(base,exponent);
   }
   if (tree->type == UNARY) return -eval_tree(tree->first,i);
 
@@ -3668,10 +3690,17 @@ int Variable::find_matching_paren(char *str, int i, char *&contents, int ivar)
   int istop = i;
 
   int n = istop - istart - 1;
+
+  // copy into a fresh buffer first, then replace the old one, so the new
+  // buffer is never aliased with the freed pointer (avoids a use-after-free
+  // warning) and contents is left intact if the copy were to fail.
+
+  char *newcontents = new char[n+1];
+  strncpy(newcontents,&str[istart+1],n);
+  newcontents[n] = '\0';
+
   delete[] contents;
-  contents = new char[n+1];
-  strncpy(contents,&str[istart+1],n);
-  contents[n] = '\0';
+  contents = newcontents;
 
   return istop;
 }
@@ -4191,7 +4220,7 @@ int Variable::math_function(char *word, char *contents, Tree **tree, Tree **tree
     // pyvar = index of python-style variable which invokes Python function
 
     int pyvar = find(&word[3]);
-    if (style[pyvar] != PYTHON)
+    if ((pyvar < 0) || (style[pyvar] != PYTHON))
       print_var_error(FLERR,"Invalid python function variable name",ivar);
 
     // check that wrapper matches Python function
@@ -4682,8 +4711,7 @@ int Variable::special_function(const std::string &word, char *contents, Tree **t
         print_var_error(FLERR,"Invalid special function in variable formula",ivar);
       if (style[ivar] != VECTOR)
         print_var_error(FLERR,"Mis-matched special function variable in variable formula",ivar);
-      if (eval_in_progress[ivar])
-        print_var_error(FLERR,"has a circular dependency",ivar);
+      if (eval_in_progress[ivar]) print_var_error(FLERR,"has a circular dependency",ivar);
 
       double *vec;
       nvec = compute_vector(ivar,&vec);
@@ -4702,10 +4730,10 @@ int Variable::special_function(const std::string &word, char *contents, Tree **t
     std::vector<double> unsorted;
 
     if (compute) {
-      double *vec;
+      double *vec = nullptr;
       if (index) {
         if (compute->array) vec = &compute->array[0][index-1];
-        else vec = nullptr;
+        else print_var_error(FLERR,"Variable formula compute array has no values",ivar);
       } else vec = compute->vector;
 
       if ((method == SORT) || (method == RSORT)) unsorted.reserve(nvec);
@@ -5325,15 +5353,17 @@ void Variable::parse_vector(int ivar, char *str)
     error->all(FLERR,"Vector variable formula lacks opening or closing brace: {}", str);
   std::vector<std::string> args = Tokenizer(std::string(str+1, str+nstr), ",").as_vector();
 
+  double *newvalues;
   int nvec = args.size();
+  memory->create(newvalues,nvec,"variable:values");
+  for (int i = 0; i < nvec; i++)
+    newvalues[i] = utils::numeric(FLERR, utils::trim(args[i]), false, lmp);
+
+  memory->destroy(vecs[ivar].values);
+  vecs[ivar].values = newvalues;
   vecs[ivar].n = nvec;
   vecs[ivar].nmax = nvec;
   vecs[ivar].currentstep = -1;
-  memory->destroy(vecs[ivar].values);
-  memory->create(vecs[ivar].values,vecs[ivar].nmax,"variable:values");
-
-  for (int i = 0; i < nvec; i++)
-    vecs[ivar].values[i] = utils::numeric(FLERR, utils::trim(args[i]), false, lmp);
 }
 
 /* ----------------------------------------------------------------------
